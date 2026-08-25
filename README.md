@@ -1,5 +1,8 @@
 # landfirst
 
+[![ci](https://github.com/montjeffrey/landfirst/actions/workflows/ci.yml/badge.svg)](https://github.com/montjeffrey/landfirst/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/landfirst.svg)](https://www.npmjs.com/package/landfirst)
+
 **Which branch do I merge first?**
 
 `landfirst` reads a repository with a lot of parallel local work and answers one
