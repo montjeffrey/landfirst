@@ -1,0 +1,46 @@
+{
+  "name": "landfirst",
+  "version": "0.1.0",
+  "description": "Which branch do I merge first? A live merge planner for repos with parallel local work \u2014 ranks branches by merge order, predicts conflicts between them, and knows about worktrees.",
+  "keywords": [
+    "git",
+    "merge",
+    "conflict",
+    "worktree",
+    "branch",
+    "merge-order",
+    "merge-conflict",
+    "cli",
+    "tui",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "author": "montjeffrey <montjeffrey@users.noreply.github.com>",
+  "type": "module",
+  "bin": {
+    "landfirst": "src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/core.mjs"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test test/model.test.mjs test/edge.test.mjs test/render.test.mjs",
+    "start": "node src/cli.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/montjeffrey/landfirst.git"
+  },
+  "bugs": {
+    "url": "https://github.com/montjeffrey/landfirst/issues"
+  },
+  "homepage": "https://github.com/montjeffrey/landfirst#readme"
+}
