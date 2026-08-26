@@ -1,0 +1,6 @@
+# Keep source diffable. A stray control byte once made core.mjs register as
+# binary, which silently killed diffs, blame and review on the main file.
+*.mjs   text eol=lf diff
+*.json  text eol=lf diff
+*.md    text eol=lf diff
+*.yml   text eol=lf diff
