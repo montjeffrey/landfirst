@@ -1,8 +1,8 @@
-node_modules/
+# build output
+/dist/
+/landfirst
+/landfirst.exe
+
+# local scratch
 *.log
 .DS_Store
-/tmp/
-*.tgz
-# local scratch/debug scripts
-churn.mjs
-/*.local.mjs
