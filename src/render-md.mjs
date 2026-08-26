@@ -131,6 +131,11 @@ export function toMarkdown(model, opts = {}) {
   // ---- commit graph -------------------------------------------------------
   L.push('## Commit graph');
   L.push('');
+  if (model.hiddenFromGraph > 0) {
+    L.push(`_Showing ${model.graphBranchNames.length} branches: those with worktrees first, then merge-plan order. ` +
+           `${model.hiddenFromGraph} more are measured and ranked above but not drawn — raise \`--max-branches\` to include them._`);
+    L.push('');
+  }
   const rows = buildTextGraph(model);
   const shown = rows.slice(0, graphRows);
   L.push('```text');

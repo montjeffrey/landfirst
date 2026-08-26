@@ -186,7 +186,8 @@ export function startTui(repo, { onQuit } = {}) {
     const head = m
       ? bold(fg(C.accent, m.repo)) + dim(`  base ${m.base}  ·  ` +
           (m.truncatedCommits ? `${m.commits.length} of ${m.totalCommits} commits` : `${m.commits.length} commits`) + `  ·  ` +
-          `${m.branches.length} branches  ·  ${m.worktrees.length} worktrees`) +
+          `${m.branches.length} branches  ·  ${m.worktrees.length} worktrees` +
+          (m.hiddenFromGraph > 0 ? `  ·  ${m.hiddenFromGraph} not drawn` : '')) +
         (m.probed ? '' : fg(C.warn, '  · probing…'))
       : bold('landfirst');
 

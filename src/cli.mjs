@@ -39,6 +39,7 @@ options
   --base BRANCH      integration branch (default main, else master)
   --all              include branches classified as dead
   --max-pairs N      cap on pairwise conflict probes (default 400)
+  --max-branches N   branches drawn in the graph (default 10; others still planned)
   --port N           port for --serve (default: an ephemeral one)
   --graph-rows N     commit rows in the Markdown graph (default 60)
   --out FILE         output path for the one-shot HTML
@@ -47,7 +48,7 @@ options
 
 function parseArgs(argv) {
   const o = {
-    limit: 400, base: null, all: false, maxPairs: 400, port: 0, graphRows: 60,
+    limit: 400, base: null, all: false, maxPairs: 400, port: 0, graphRows: 60, maxBranches: 10,
     out: null, serve: false, tui: false, md: false, open: false, app: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -55,6 +56,7 @@ function parseArgs(argv) {
     if (a === '--limit') o.limit = parseInt(argv[++i], 10);
     else if (a === '--base') o.base = argv[++i];
     else if (a === '--max-pairs') o.maxPairs = parseInt(argv[++i], 10);
+    else if (a === '--max-branches') o.maxBranches = parseInt(argv[++i], 10);
     else if (a === '--port') o.port = parseInt(argv[++i], 10);
     else if (a === '--graph-rows') o.graphRows = parseInt(argv[++i], 10);
     else if (a === '--out') o.out = argv[++i];

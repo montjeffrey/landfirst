@@ -65,6 +65,7 @@ landfirst --tui --md   # combine: one watcher, one probe cache
 | `--limit N` | commits to render (default 400) |
 | `--all` | include branches classified as dead |
 | `--max-pairs N` | cap on pairwise conflict probes (default 400) |
+| `--max-branches N` | branches drawn in the graph (default 10) |
 
 ## How the plan is computed
 
@@ -109,10 +110,16 @@ recomputed. On a repo with 29 branches, 14 worktrees and 1315 commits:
 
 The layout optimises for stability over compactness, because it redraws live:
 
-- **Lanes come from branch identity, not row position.** A branch keeps its lane
-  and its colour as you work. An earlier version assigned lanes in commit order,
-  so one new commit could move 7 of 10 commits to different lanes and colours —
-  fine in a screenshot, unusable when it redraws every few seconds.
+- **Lanes come from branch identity, not row position.** Each drawn branch gets
+  its own lane, assigned in a fixed order, so it keeps that lane and colour as
+  you work. An earlier version assigned lanes in commit order and reused them
+  between non-overlapping branches — tighter, but one new commit could move 7 of
+  10 commits to different lanes and colours. Fine in a screenshot, unusable when
+  it redraws every few seconds.
+- **Only the branches you're working in get a line.** Branches with worktrees
+  first, then merge-plan order, capped by `--max-branches`. The rest are still
+  measured, ranked and listed — they just don't add a lane. This is what keeps
+  one-lane-per-branch affordable.
 - **The base branch always owns lane 0**, and its first-parent spine stays there.
 - **Ordering is a pure function of the commit set.** Commits sharing a timestamp
   are broken on hash, so identical repositories always render identically.
