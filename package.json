@@ -32,7 +32,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test test/model.test.mjs test/edge.test.mjs test/render.test.mjs",
+    "test": "node --test test/model.test.mjs test/edge.test.mjs test/render.test.mjs test/stability.test.mjs",
     "start": "node src/cli.mjs"
   },
   "repository": {

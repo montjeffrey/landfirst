@@ -98,8 +98,27 @@ recomputed. On a repo with 29 branches, 14 worktrees and 1315 commits:
 - `--serve` binds to `127.0.0.1` only. The page exposes commit messages, file
   paths, and branch names; it has no authentication and is not meant to leave
   the machine.
-- Reads only. It never writes to your repository — no checkouts, no merges, no
-  index changes.
+- **Your repository is never written to.** No checkouts, no merges, no index
+  changes — and no objects. `merge-tree --write-tree` does write the merged tree
+  it computes, so probes run with `GIT_OBJECT_DIRECTORY` pointed at a temp store
+  (the real store as an alternate, so reads still resolve). Reports go to a temp
+  directory rather than into `.git`. There is a test asserting the loose-object
+  count is unchanged after repeated probing.
+
+## Reading the graph
+
+The layout optimises for stability over compactness, because it redraws live:
+
+- **Lanes come from branch identity, not row position.** A branch keeps its lane
+  and its colour as you work. An earlier version assigned lanes in commit order,
+  so one new commit could move 7 of 10 commits to different lanes and colours —
+  fine in a screenshot, unusable when it redraws every few seconds.
+- **The base branch always owns lane 0**, and its first-parent spine stays there.
+- **Ordering is a pure function of the commit set.** Commits sharing a timestamp
+  are broken on hash, so identical repositories always render identically.
+- **The trunk is never truncated.** The window always contains a continuous
+  first-parent spine plus every branch's merge-base, so a branch can't render
+  floating with no visible connection to the base.
 
 ## License
 

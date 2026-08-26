@@ -2,7 +2,7 @@
 /**
  * landfirst - branch/worktree map with merge-order analysis.
  *
- *   landfirst                 one-shot HTML  (<repo>/.git/landfirst.html)
+ *   landfirst                 one-shot HTML report (written to a temp dir)
  *   landfirst --serve         live page over SSE, never stale
  *   landfirst --tui           live terminal UI, for Zed's terminal dock
  *   landfirst --md            live Markdown, for Zed's Markdown preview
@@ -30,7 +30,7 @@ function usage() {
 surfaces (combinable; default is one-shot HTML)
   --serve            live page on 127.0.0.1, updates over SSE
   --tui              live terminal UI (use inside Zed's terminal dock)
-  --md               live Markdown at <repo>/.git/landfirst.md
+  --md               live Markdown report (path is printed on start)
   --open             open the HTML surface in a browser
   --app              open it as a chromeless window (implies --serve --open)
 
@@ -137,6 +137,21 @@ function openDefault(target) {
   try { execFileSync(cmd[0], cmd[1], { windowsHide: true }); } catch { /* non-fatal */ }
 }
 
+/**
+ * Where reports go. Not inside .git: a 600 kB HTML rewritten on every recompute
+ * is noise in the object store's directory, and on a cloud-synced repo it makes
+ * the sync client churn over .git continuously. Temp is disposable and private.
+ */
+function reportDir(repo) {
+  let h = 0x811c9dc5;
+  const key = repo.root || repo.name;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  const slug = (repo.name || 'repo').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 40);
+  const dir = join(tmpdir(), 'landfirst', `${slug}-${h.toString(16)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const repo = openRepo(opts.base);
@@ -146,7 +161,7 @@ function main() {
   if (!live) {
     process.stderr.write(`landfirst: reading ${repo.name} (base=${repo.base}) ... `);
     const model = buildModel(repo, opts, { probes: true });
-    const out = resolve(opts.out || join(repo.gitDir, 'landfirst.html'));
+    const out = resolve(opts.out || join(reportDir(repo), 'landfirst.html'));
     writeFileSync(out, renderHtml(model, { live: false }), 'utf8');
     process.stderr.write(`${model.commits.length} commits, ${model.branches.length} branches\n`);
     console.log(out);
@@ -161,7 +176,7 @@ function main() {
   let mdPath = null;
 
   if (opts.md) {
-    mdPath = resolve(join(repo.gitDir, 'landfirst.md'));
+    mdPath = resolve(join(reportDir(repo), 'landfirst.md'));
     surfaces.push(`markdown  ${mdPath}`);
   }
 
