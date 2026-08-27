@@ -24,6 +24,7 @@ func main() {
 		noProbe  = flag.Bool("no-probe", false, "skip conflict probing (faster, no merge plan conflicts)")
 		maxPairs = flag.Int("max-pairs", 200, "cap on pairwise conflict probes")
 		showVer  = flag.Bool("version", false, "print version and exit")
+		density  = flag.String("density", "comfortable", "graph spacing: compact | comfortable | spacious")
 	)
 	flag.Parse()
 
@@ -54,7 +55,9 @@ func main() {
 
 	// The panel takes the alternate screen so it behaves like a docked app and
 	// leaves the shell scrollback untouched on exit.
-	p := tea.NewProgram(tui.New(repo, opt), tea.WithAltScreen())
+	app := tui.New(repo, opt)
+	app.SetDensity(tui.ParseDensity(*density))
+	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "landfirst:", err)
 		os.Exit(1)

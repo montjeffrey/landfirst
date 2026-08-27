@@ -37,11 +37,41 @@ cannot probe is reported as **unknown** rather than quietly reported as clean.
 ## Use
 
 ```bash
-landfirst            # the panel
+landfirst            # the panel, opening on the graph
 landfirst -plain     # one-shot text report; pipeable
 landfirst -json      # the whole model, for scripts and agents
 landfirst -no-probe  # skip conflict probing (much faster on big repos)
 ```
+
+## The graph
+
+The commit graph is drawn on a **sub-cell canvas**, not with box-drawing
+characters. A terminal cell is the smallest thing most TUIs can colour, which is
+why character-drawn graphs go blocky: every lane change becomes a corner glyph
+the reader has to decode, and diagonals become staircases. It stops being
+legible somewhere around three branches. Braille addresses 2x4 dots inside a
+single cell, so edges are drawn as real quadratic curves at eight times the
+resolution and a branch departing its parent is obvious at a glance.
+
+```
+   ⠐⢺⠒         716a9a2 feat/gamma  gamma work            2m
+  ⢀⣀⠤⠃
+  ⢸       ⠐⢺⠒   a3a83e8 feat/beta   feat/beta work 3      2m
+  ⢸        ⢸
+  ⢸       ⠐⢺⠒   4cb0881             feat/beta work 2      2m
+  ⢸⣀⣀⣀⡠⠤⠔⠊⠁
+ ⠐⢺⠒            a61b733 main        merge alpha           2m
+```
+
+Filled nodes are ordinary commits, hollow ones are merges, so the distinction
+survives without colour. `-density compact|comfortable|spacious` trades curve
+smoothness against how much history fits, and `d` cycles it live — a docked
+panel is short, which makes that a real choice rather than a preference.
+
+Lanes sit three cells apart for a reason that is not aesthetic: a cell holds
+exactly one foreground colour, so two differently coloured tracks sharing a cell
+means one of them loses. Three cells guarantees each lane owns its own column of
+cells and branch colours stay truthful.
 
 ## What it detects
 

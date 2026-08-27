@@ -28,8 +28,9 @@ type App struct {
 	m    *model.Model
 	opt  model.Options
 
-	tab    tab
-	rows   []GraphRow // cached printable graph rows
+	tab     tab
+	density Density
+	rows    []GraphRow // legacy box-drawing rows, kept for the plain report
 	cursor int
 	top    int // first visible row, for scrolling
 	w, h   int
@@ -56,7 +57,22 @@ type actionDoneMsg struct {
 }
 
 func New(repo *git.Repo, opt model.Options) *App {
-	return &App{repo: repo, opt: opt, loading: true, status: "reading repository…"}
+	return &App{repo: repo, opt: opt, density: Comfortable, loading: true, status: "reading repository…"}
+}
+
+// SetDensity chooses vertical spacing before the program starts.
+func (a *App) SetDensity(d Density) { a.density = d }
+
+// ParseDensity maps the flag value. Unknown values fall back to comfortable
+// rather than failing: this is a display preference, not a correctness one.
+func ParseDensity(s string) Density {
+	switch s {
+	case "compact":
+		return Compact
+	case "spacious":
+		return Spacious
+	}
+	return Comfortable
 }
 
 func (a *App) Init() tea.Cmd { return a.rebuild() }
@@ -73,7 +89,10 @@ func (a *App) rowCount() int {
 	}
 	switch a.tab {
 	case tabGraph:
-		return len(a.rows)
+		if a.m.Graph == nil {
+			return 0
+		}
+		return len(a.m.Graph.Commits)
 	case tabLanding:
 		return len(a.m.Units)
 	case tabPlan:
@@ -173,6 +192,11 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor = 0
 	case "G", "end":
 		a.cursor = maxInt(0, a.rowCount()-1)
+	case "d":
+		// Cycle how much vertical room each commit gets. A docked panel is
+		// short, so this is the trade between smooth curves and visible history.
+		a.density = (a.density + 1) % 3
+		a.status = []string{"density: compact", "density: comfortable", "density: spacious"}[a.density]
 	case "r":
 		a.loading = true
 		a.status = "refreshing…"

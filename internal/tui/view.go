@@ -148,16 +148,20 @@ func (a *App) viewLanding(w, body int) string {
 	return b.String()
 }
 
-// viewGraph draws the commit graph: a fixed-width lane gutter, then refs,
-// subject, author and age. The gutter width never changes with topology, so
-// the text beside it never jitters as the graph updates.
+// viewGraph draws the commit graph on a sub-cell canvas, with the commit text
+// aligned beside it.
+//
+// The gutter used to be box-drawing characters, one cell per lane. That is
+// legible at three branches and unreadable at ten: every lane change becomes a
+// corner glyph the reader has to decode, and diagonals become staircases. The
+// canvas addresses 2x4 sub-pixels per cell, so edges are real curves and a
+// branch departing its parent is obvious at a glance.
 func (a *App) viewGraph(w, body int) string {
 	g := a.m.Graph
-	if g == nil || len(a.rows) == 0 {
+	if g == nil || len(g.Commits) == 0 {
 		return styDim.Render("  no commits to draw") + "\n"
 	}
 	var b strings.Builder
-	gw := GutterWidth(g.LaneCount)
 
 	if g.Truncated || g.Hidden > 0 {
 		note := fmt.Sprintf("  showing %d of %d commits", len(g.Commits), g.Total)
@@ -168,50 +172,55 @@ func (a *App) viewGraph(w, body int) string {
 		body--
 	}
 
-	for i := a.top; i < len(a.rows) && i < a.top+body; i++ {
-		row := a.rows[i]
-		gut := Gutter(row, g.LaneCount, true)
-		if row.Kind == "link" {
-			b.WriteString("  " + gut + "\n")
-			continue
-		}
-		c := row.Commit
+	gc := DrawGraph(g, a.density, 0)
+	rpc := a.density.rowsPerCommit()
 
-		var refs string
-		for _, r := range c.Refs {
-			label := strings.TrimPrefix(r, "HEAD -> ")
-			style := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-			if strings.HasPrefix(r, "HEAD -> ") || r == "HEAD" {
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true)
-			} else if strings.HasPrefix(r, "tag: ") {
-				label = strings.TrimPrefix(r, "tag: ")
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
-			}
-			refs += style.Render(label) + " "
-		}
+	// Scroll by text row, so a partially visible commit still shows its curve.
+	first := a.top * rpc
+	for i := 0; i < body && first+i < len(gc.Lines); i++ {
+		rowIdx := first + i
+		line := "  " + gc.Lines[rowIdx]
 
-		age := ago(c.Date)
-		// Reserve the age column up front so the selected row, which is padded
-		// to the full width, cannot push it off the edge.
-		const ageW = 5
-		textW := w - gw - 14 - ageW
-		if textW < 12 {
-			textW = 12
-		}
-		subjW := maxInt(6, textW-lipgloss.Width(refs))
-
-		line := "  " + gut + " " + styFaint.Render(c.Short) + " " + refs +
-			styText.Render(pad(c.Subject, subjW)) + " " + styFaint.Render(pad(age, ageW))
-
-		if i == a.cursor {
-			// Rebuild unstyled so the highlight can be padded to an exact width.
-			plain := fmt.Sprintf("  %s %s %s%s %s", stripANSI(gut), c.Short,
-				stripANSI(refs), pad(c.Subject, subjW), pad(age, ageW))
-			line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(plain, w-1))
+		// Attach commit text on the row the node sits on.
+		commitIdx := rowIdx / rpc
+		if rowIdx%rpc == 0 && commitIdx < len(g.Commits) {
+			c := g.Commits[commitIdx]
+			line += "  " + a.commitText(c, w-gc.Width-4, commitIdx == a.cursor)
 		}
 		b.WriteString(line + "\n")
 	}
 	return b.String()
+}
+
+// commitText is the right-hand pane: sha, refs, subject, age.
+func (a *App) commitText(c model.Commit, width int, selected bool) string {
+	if width < 20 {
+		width = 20
+	}
+	var refs string
+	for _, r := range c.Refs {
+		label := strings.TrimPrefix(r, "HEAD -> ")
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+		switch {
+		case strings.HasPrefix(r, "HEAD -> "), r == "HEAD":
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true)
+		case strings.HasPrefix(r, "tag: "):
+			label = strings.TrimPrefix(r, "tag: ")
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
+		}
+		refs += style.Render(label) + " "
+	}
+
+	const ageW = 5
+	subjW := maxInt(8, width-9-ageW-lipgloss.Width(refs))
+	age := ago(c.Date)
+
+	if selected {
+		plain := fmt.Sprintf("%s %s%s %s", c.Short, stripANSI(refs), pad(c.Subject, subjW), pad(age, ageW))
+		return lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(plain, width))
+	}
+	return styFaint.Render(c.Short) + " " + refs +
+		styText.Render(pad(c.Subject, subjW)) + " " + styFaint.Render(pad(age, ageW))
 }
 
 func (a *App) viewPlan(w, body int) string {
@@ -285,6 +294,7 @@ func (a *App) footer(w int) string {
 	help := styFaint.Render("  ") +
 		styKey.Render("j/k") + styFaint.Render(" move  ") +
 		styKey.Render("1-4/tab") + styFaint.Render(" panel  ") +
+		styKey.Render("d") + styFaint.Render(" density  ") +
 		styKey.Render("p") + styFaint.Render(" fix selected  ") +
 		styKey.Render("r") + styFaint.Render(" refresh  ") +
 		styKey.Render("q") + styFaint.Render(" quit")

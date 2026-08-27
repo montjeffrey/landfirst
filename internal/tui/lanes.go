@@ -35,6 +35,9 @@ const (
 // light and dark terminals.
 var laneColors = []string{"39", "78", "203", "141", "179", "43", "215", "111", "176", "79", "221", "167"}
 
+// lanePalette is the same set as numbers, for the canvas renderer.
+var lanePalette = []int{39, 78, 203, 141, 179, 43, 215, 111, 176, 79, 221, 167}
+
 // GraphRow is one printable line: either a commit or a link line between them.
 type GraphRow struct {
 	Kind   string // "commit" | "link"
