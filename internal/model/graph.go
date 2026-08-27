@@ -34,7 +34,7 @@ type track struct {
 // visible to attach to and the graph reads as disconnected fragments. Filling
 // the window by recency across all refs does not guarantee that, which is why
 // the graph looked broken on any repository larger than the limit.
-func collectCommits(r *git.Repo, tracks []track, limit int) ([]Commit, bool) {
+func collectCommits(r *git.Repo, tracks []track, limit int, unlimited bool) ([]Commit, bool) {
 	seen := make(map[string]Commit)
 	var order []string
 	add := func(list []Commit) {
@@ -46,6 +46,16 @@ func collectCommits(r *git.Repo, tracks []track, limit int) ([]Commit, bool) {
 		}
 	}
 
+	// Unlimited means the entire topology, and the windowed construction below
+	// cannot produce it: --first-parent skips commits that arrived through a
+	// merge, and `base..branch` is empty for a branch already merged in. Both
+	// together make merged history invisible, which is the opposite of what a
+	// full-topology view is for. Ask git for everything instead.
+	if unlimited {
+		all := parseLog(r, "--all")
+		return topoSort(all), false
+	}
+
 	// 1. continuous first-parent trunk
 	add(parseLog(r, "--max-count="+strconv.Itoa(limit), "--first-parent", r.Base))
 
@@ -55,6 +65,9 @@ func collectCommits(r *git.Repo, tracks []track, limit int) ([]Commit, bool) {
 		perBranch = 250
 	}
 	ceiling := limit * 3
+	if ceiling < 0 { // overflow on an unlimited window
+		ceiling = 1 << 30
+	}
 	var wantBases []string
 	for _, t := range tracks {
 		if t.Name == r.Base || len(seen) >= ceiling {
@@ -215,14 +228,22 @@ func layout(commits []Commit, tracks []track) ([]Commit, []Edge, int) {
 // happening), then merge-plan order. Everything else is still measured and
 // ranked elsewhere - it just does not get a line.
 func buildGraph(r *git.Repo, units []Unit, opt Options) *Graph {
+	// 0 means no cap. Drawing the whole topology is the point of this tool for
+	// a repo with a dozen worktrees, so "everything" has to be reachable - the
+	// defaults exist to keep the first screen fast, not to hide history.
 	limit := opt.Limit
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 400
 	}
+	unlimitedCommits := limit < 0
+	if unlimitedCommits {
+		limit = 1 << 30
+	}
 	maxBranches := opt.MaxBranches
-	if maxBranches <= 0 {
+	if maxBranches == 0 {
 		maxBranches = 10
 	}
+	unlimitedBranches := maxBranches < 0
 
 	baseTip := strings.TrimSpace(git.Try(r.Root, "rev-parse", r.Base))
 	tracks := []track{{Name: r.Base, Head: baseTip}}
@@ -252,13 +273,13 @@ func buildGraph(r *git.Repo, units []Unit, opt Options) *Graph {
 		}
 	}
 	for _, u := range units { // then by verdict severity, which units are already sorted by
-		if len(tracks) > maxBranches {
+		if !unlimitedBranches && len(tracks) > maxBranches {
 			break
 		}
 		add(u)
 	}
 
-	commits, truncated := collectCommits(r, tracks, limit)
+	commits, truncated := collectCommits(r, tracks, limit, unlimitedCommits)
 	commits, edges, laneCount := layout(commits, tracks)
 
 	total := 0

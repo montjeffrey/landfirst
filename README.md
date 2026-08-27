@@ -38,6 +38,7 @@ cannot probe is reported as **unknown** rather than quietly reported as clean.
 
 ```bash
 landfirst            # the panel, opening on the graph
+landfirst -all       # the entire topology: every branch, every commit
 landfirst -plain     # one-shot text report; pipeable
 landfirst -json      # the whole model, for scripts and agents
 landfirst -no-probe  # skip conflict probing (much faster on big repos)
@@ -67,6 +68,12 @@ Filled nodes are ordinary commits, hollow ones are merges, so the distinction
 survives without colour. `-density compact|comfortable|spacious` trades curve
 smoothness against how much history fits, and `d` cycles it live — a docked
 panel is short, which makes that a real choice rather than a preference.
+
+`-all` draws the **entire topology** — every branch gets its own lane and every
+commit is present, including history reachable only through a merge. The default
+window is capped for a fast first screen, and it says so; `-limit` and
+`-branches` set the caps individually, and `-1` means no cap. At full topology
+the canvas is wider than any dock, so `h`/`l` pan it and `H` snaps back.
 
 Lanes sit three cells apart for a reason that is not aesthetic: a cell holds
 exactly one foreground colour, so two differently coloured tracks sharing a cell

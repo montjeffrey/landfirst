@@ -225,3 +225,72 @@ func TestNoTwoCommitsOccupyTheSameCell(t *testing.T) {
 		}
 	}
 }
+
+// Full topology must mean full. The windowed construction cannot produce it:
+// --first-parent skips commits that arrived through a merge, and base..branch
+// is empty for a branch already merged in, so merged history goes invisible -
+// the exact opposite of what this mode is for.
+func TestUnlimitedDrawsTheEntireTopology(t *testing.T) {
+	f := deepFixture(t)
+	// Merge one branch in, so there is history only reachable through a merge.
+	f.run("checkout", "-q", "main")
+	f.run("merge", "-q", "--no-ff", "--no-edit", "-m", "merge feat/a", "feat/a")
+
+	repo, err := git.Open(f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	full := Build(repo, Options{Probe: false, Limit: -1, MaxBranches: -1}).Graph
+	if full.Truncated {
+		t.Fatal("the unlimited graph reports itself truncated")
+	}
+	if len(full.Commits) != full.Total {
+		t.Fatalf("drew %d commits of %d - unlimited must draw every one", len(full.Commits), full.Total)
+	}
+	if full.Hidden != 0 {
+		t.Fatalf("%d branches hidden in unlimited mode", full.Hidden)
+	}
+
+	// Every local branch must have its own lane.
+	want := map[string]bool{}
+	for _, b := range collectBranches(repo) {
+		want[b.Name] = true
+	}
+	got := map[string]bool{}
+	for _, n := range full.Drawn {
+		got[n] = true
+	}
+	for name := range want {
+		if !got[name] {
+			t.Fatalf("branch %q has no lane in the full topology", name)
+		}
+	}
+
+	// A commit that exists only on the merged-in side must be present.
+	merged := 0
+	for _, c := range full.Commits {
+		if len(c.Parents) > 1 {
+			merged++
+		}
+	}
+	if merged == 0 {
+		t.Fatal("no merge commit in the full topology; merged history is missing")
+	}
+}
+
+func TestBranchCapIsRespectedByDefault(t *testing.T) {
+	f := deepFixture(t)
+	repo, err := git.Open(f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := Build(repo, Options{Probe: false, MaxBranches: 2}).Graph
+	// base plus the cap; the rest are counted, not drawn.
+	if len(g.Drawn) > 3 {
+		t.Fatalf("cap of 2 drew %d branches: %v", len(g.Drawn), g.Drawn)
+	}
+	if g.Hidden == 0 {
+		t.Fatal("branches were dropped without being reported as hidden")
+	}
+}

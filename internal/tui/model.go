@@ -32,7 +32,8 @@ type App struct {
 	density Density
 	rows    []GraphRow // legacy box-drawing rows, kept for the plain report
 	cursor int
-	top    int // first visible row, for scrolling
+	top    int // first visible row, for vertical scrolling
+	panX   int // first visible canvas column, for horizontal scrolling
 	w, h   int
 
 	status   string
@@ -166,12 +167,12 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c", "esc":
 		a.quitting = true
 		return a, tea.Quit
-	case "tab", "right", "l":
+	case "tab":
 		a.tab = (a.tab + 1) % tabCount
-		a.cursor, a.top = 0, 0
-	case "shift+tab", "left":
+		a.cursor, a.top, a.panX = 0, 0, 0
+	case "shift+tab":
 		a.tab = (a.tab + tabCount - 1) % tabCount
-		a.cursor, a.top = 0, 0
+		a.cursor, a.top, a.panX = 0, 0, 0
 	case "1":
 		a.tab, a.cursor, a.top = tabGraph, 0, 0
 	case "2":
@@ -180,6 +181,25 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.tab, a.cursor, a.top = tabPlan, 0, 0
 	case "4":
 		a.tab, a.cursor, a.top = tabWorktrees, 0, 0
+	case "h", "left":
+		// Pan the canvas rather than changing tab: at full topology the graph
+		// is far wider than any dock, so horizontal movement is the common
+		// need and tab-switching has the number keys.
+		if a.tab == tabGraph {
+			a.panX = maxInt(0, a.panX-4)
+		} else {
+			a.tab = (a.tab + tabCount - 1) % tabCount
+			a.cursor, a.top = 0, 0
+		}
+	case "l", "right":
+		if a.tab == tabGraph {
+			a.panX += 4
+		} else {
+			a.tab = (a.tab + 1) % tabCount
+			a.cursor, a.top = 0, 0
+		}
+	case "H":
+		a.panX = 0
 	case "j", "down":
 		if a.cursor < a.rowCount()-1 {
 			a.cursor++

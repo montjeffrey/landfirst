@@ -25,6 +25,9 @@ func main() {
 		maxPairs = flag.Int("max-pairs", 200, "cap on pairwise conflict probes")
 		showVer  = flag.Bool("version", false, "print version and exit")
 		density  = flag.String("density", "comfortable", "graph spacing: compact | comfortable | spacious")
+		limit    = flag.Int("limit", 400, "commits to draw; -1 for the entire history")
+		branches = flag.Int("branches", 10, "branches given their own lane; -1 for every branch")
+		all      = flag.Bool("all", false, "draw the entire topology: every branch, every commit")
 	)
 	flag.Parse()
 
@@ -39,7 +42,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "landfirst:", err)
 		os.Exit(1)
 	}
-	opt := model.Options{Probe: !*noProbe, MaxPairs: *maxPairs}
+	opt := model.Options{Probe: !*noProbe, MaxPairs: *maxPairs, Limit: *limit, MaxBranches: *branches}
+	if *all {
+		opt.Limit, opt.MaxBranches = -1, -1
+	}
 
 	if *asJSON || *plain {
 		m := model.Build(repo, opt)

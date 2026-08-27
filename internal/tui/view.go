@@ -175,17 +175,38 @@ func (a *App) viewGraph(w, body int) string {
 	gc := DrawGraph(g, a.density, 0)
 	rpc := a.density.rowsPerCommit()
 
+	// How much width the canvas may take before the text pane is squeezed out.
+	// The text is the point of the graph, so the canvas yields, not the text.
+	const minTextW = 44
+	canvasBudget := w - minTextW - 4
+	if canvasBudget < 8 {
+		canvasBudget = 8
+	}
+	if a.panX > gc.Width-1 {
+		a.panX = maxInt(0, gc.Width-1)
+	}
+	shown := gc.Width - a.panX
+	if shown > canvasBudget {
+		shown = canvasBudget
+	}
+	if gc.Width > canvasBudget {
+		b.WriteString(styFaint.Render(fmt.Sprintf(
+			"  lanes %d-%d of %d · h/l to pan, H to reset",
+			a.panX/laneCells+1, minInt(gc.Width, a.panX+shown)/laneCells, g.LaneCount)) + "\n")
+		body--
+	}
+
 	// Scroll by text row, so a partially visible commit still shows its curve.
 	first := a.top * rpc
 	for i := 0; i < body && first+i < len(gc.Lines); i++ {
 		rowIdx := first + i
-		line := "  " + gc.Lines[rowIdx]
+		line := "  " + sliceCells(gc.Lines[rowIdx], a.panX, shown)
 
 		// Attach commit text on the row the node sits on.
 		commitIdx := rowIdx / rpc
 		if rowIdx%rpc == 0 && commitIdx < len(g.Commits) {
 			c := g.Commits[commitIdx]
-			line += "  " + a.commitText(c, w-gc.Width-4, commitIdx == a.cursor)
+			line += "  " + a.commitText(c, w-shown-6, commitIdx == a.cursor)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -295,6 +316,7 @@ func (a *App) footer(w int) string {
 		styKey.Render("j/k") + styFaint.Render(" move  ") +
 		styKey.Render("1-4/tab") + styFaint.Render(" panel  ") +
 		styKey.Render("d") + styFaint.Render(" density  ") +
+		styKey.Render("h/l") + styFaint.Render(" pan  ") +
 		styKey.Render("p") + styFaint.Render(" fix selected  ") +
 		styKey.Render("r") + styFaint.Render(" refresh  ") +
 		styKey.Render("q") + styFaint.Render(" quit")
@@ -328,4 +350,62 @@ func stripANSI(s string) string {
 		}
 	}
 	return out.String()
+}
+
+
+// sliceCells takes a window of printable cells out of an already-styled line,
+// skipping ANSI sequences so the escape bytes are neither counted as width nor
+// cut in half. Slicing a styled string by byte offset is the classic way to
+// emit a broken escape and corrupt the rest of the screen.
+func sliceCells(s string, from, count int) string {
+	if count <= 0 {
+		return ""
+	}
+	var out strings.Builder
+	col, taken := 0, 0
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			j := i + 1
+			for j < len(s) && s[j] != 'm' {
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			// Keep styling for cells inside the window so colour survives.
+			if col >= from && taken < count {
+				out.WriteString(s[i:j])
+			}
+			i = j
+			continue
+		}
+		r, size := decodeRune(s[i:])
+		if col >= from && taken < count {
+			out.WriteRune(r)
+			taken++
+		}
+		col++
+		i += size
+	}
+	return out.String()
+}
+
+func decodeRune(s string) (rune, int) {
+	for i, r := range s {
+		if i == 0 {
+			size := 1
+			for size < len(s) && (s[size]&0xC0) == 0x80 {
+				size++
+			}
+			return r, size
+		}
+	}
+	return ' ', 1
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
