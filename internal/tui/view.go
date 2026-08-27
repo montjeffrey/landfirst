@@ -44,6 +44,8 @@ func (a *App) View() string {
 	a.scrollTo(body)
 
 	switch a.tab {
+	case tabTopology:
+		b.WriteString(a.viewTopology(w, body))
 	case tabGraph:
 		b.WriteString(a.viewGraph(w, body))
 	case tabLanding:
@@ -314,7 +316,7 @@ func (a *App) footer(w int) string {
 	}
 	help := styFaint.Render("  ") +
 		styKey.Render("j/k") + styFaint.Render(" move  ") +
-		styKey.Render("1-4/tab") + styFaint.Render(" panel  ") +
+		styKey.Render("1-5/tab") + styFaint.Render(" panel  ") +
 		styKey.Render("d") + styFaint.Render(" density  ") +
 		styKey.Render("h/l") + styFaint.Render(" pan  ") +
 		styKey.Render("p") + styFaint.Render(" fix selected  ") +

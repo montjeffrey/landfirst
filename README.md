@@ -44,6 +44,42 @@ landfirst -json      # the whole model, for scripts and agents
 landfirst -no-probe  # skip conflict probing (much faster on big repos)
 ```
 
+## The topology view
+
+The panel opens on **topology**, not on the commit graph, because a commit graph
+answers "what happened, in what order" and that is not the question this tool
+exists for. The question is where each branch lands and what it fights with.
+
+The base runs down the page. Every branch attaches at the commit it actually
+forked from, so distance down the spine is staleness and branches that left the
+base together sit together:
+
+```
+   ●── HEAD  a61b733  merge alpha        8 branches share this fork
+   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖
+   │   ↯ 14 file(s) also changed by fix/kpi-compliance-role   loader.ts, seed.sql
+   │  ├! fix/kpi-compliance-role      ━━━━▸ +6
+   │  ╰! feat/self-hosted-redis-worker ━━▸ +1 ⬖
+   │
+   ●── 232 commits back  9f21c0e  initial import
+   │  ╰! feat/orcatec-phase3-transform-load ━▸ +0
+```
+
+### What "contention" means here
+
+A raw conflict count conflates two unrelated things, and on a real repository
+the useless one drowns out the useful one — measured median 14 files against a
+maximum of 203.
+
+Two branches that forked from **different eras** conflict on hundreds of files
+because one carries months of unrelated history. That is drift, not contention,
+and it tells you to rebase rather than anything about the code.
+
+Two branches that forked **together** and both edited the same file are
+genuinely fighting over it. That is what gets drawn: files both branches changed
+since their shared fork point. Pairs from different fork points are not compared
+at all, so the signal stays clean.
+
 ## The graph
 
 The commit graph is drawn on a **sub-cell canvas**, not with box-drawing

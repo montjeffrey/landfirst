@@ -59,6 +59,10 @@ func Build(r *git.Repo, opt Options) *Model {
 
 	m.Plan, m.Collisions = buildPlan(r, units, opt, mode)
 	m.Graph = buildGraph(r, units, opt)
+	m.Forks = buildForks(r, units)
+	if opt.Probe {
+		m.Contentions = buildContentions(r, m.Forks, mode, opt.MaxPairs)
+	}
 	m.BuildMillis = time.Since(start).Milliseconds()
 	return m
 }

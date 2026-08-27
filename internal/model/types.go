@@ -113,7 +113,9 @@ type Model struct {
 	Worktrees       []Worktree  `json:"worktrees"`
 	Plan            []PlanItem  `json:"plan"`
 	Collisions      []Collision `json:"collisions"`
-	Graph           *Graph      `json:"graph,omitempty"`
+	Graph           *Graph       `json:"graph,omitempty"`
+	Forks           []ForkPoint  `json:"forks"`
+	Contentions     []Contention `json:"contentions"`
 	StrandedCommits int         `json:"strandedCommits"`
 	AtRisk          int         `json:"atRisk"`
 	BuildMillis     int64       `json:"buildMillis"`

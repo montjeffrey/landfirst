@@ -13,14 +13,15 @@ import (
 type tab int
 
 const (
-	tabGraph tab = iota
+	tabTopology tab = iota
+	tabGraph
 	tabLanding
 	tabPlan
 	tabWorktrees
 	tabCount
 )
 
-var tabNames = []string{"graph", "landing", "merge plan", "worktrees"}
+var tabNames = []string{"topology", "graph", "landing", "merge plan", "worktrees"}
 
 // App is the whole panel state.
 type App struct {
@@ -89,6 +90,8 @@ func (a *App) rowCount() int {
 		return 0
 	}
 	switch a.tab {
+	case tabTopology:
+		return len(a.topologyRows())
 	case tabGraph:
 		if a.m.Graph == nil {
 			return 0
@@ -174,12 +177,14 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.tab = (a.tab + tabCount - 1) % tabCount
 		a.cursor, a.top, a.panX = 0, 0, 0
 	case "1":
-		a.tab, a.cursor, a.top = tabGraph, 0, 0
+		a.tab, a.cursor, a.top = tabTopology, 0, 0
 	case "2":
-		a.tab, a.cursor, a.top = tabLanding, 0, 0
+		a.tab, a.cursor, a.top = tabGraph, 0, 0
 	case "3":
-		a.tab, a.cursor, a.top = tabPlan, 0, 0
+		a.tab, a.cursor, a.top = tabLanding, 0, 0
 	case "4":
+		a.tab, a.cursor, a.top = tabPlan, 0, 0
+	case "5":
 		a.tab, a.cursor, a.top = tabWorktrees, 0, 0
 	case "h", "left":
 		// Pan the canvas rather than changing tab: at full topology the graph
