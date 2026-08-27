@@ -10,8 +10,10 @@ import (
 
 // Options control how much work Build does.
 type Options struct {
-	Probe    bool // run conflict probes for the merge plan
-	MaxPairs int
+	Probe       bool // run conflict probes for the merge plan
+	MaxPairs    int
+	Limit       int // commits to draw (0 = default)
+	MaxBranches int // branches given their own lane (0 = default)
 }
 
 // gitCapability decides how conflicts can be probed.
@@ -56,6 +58,7 @@ func Build(r *git.Repo, opt Options) *Model {
 	}
 
 	m.Plan, m.Collisions = buildPlan(r, units, opt, mode)
+	m.Graph = buildGraph(r, units, opt)
 	m.BuildMillis = time.Since(start).Milliseconds()
 	return m
 }

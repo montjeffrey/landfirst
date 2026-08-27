@@ -44,6 +44,8 @@ func (a *App) View() string {
 	a.scrollTo(body)
 
 	switch a.tab {
+	case tabGraph:
+		b.WriteString(a.viewGraph(w, body))
 	case tabLanding:
 		b.WriteString(a.viewLanding(w, body))
 	case tabPlan:
@@ -146,6 +148,72 @@ func (a *App) viewLanding(w, body int) string {
 	return b.String()
 }
 
+// viewGraph draws the commit graph: a fixed-width lane gutter, then refs,
+// subject, author and age. The gutter width never changes with topology, so
+// the text beside it never jitters as the graph updates.
+func (a *App) viewGraph(w, body int) string {
+	g := a.m.Graph
+	if g == nil || len(a.rows) == 0 {
+		return styDim.Render("  no commits to draw") + "\n"
+	}
+	var b strings.Builder
+	gw := GutterWidth(g.LaneCount)
+
+	if g.Truncated || g.Hidden > 0 {
+		note := fmt.Sprintf("  showing %d of %d commits", len(g.Commits), g.Total)
+		if g.Hidden > 0 {
+			note += fmt.Sprintf(" · %d branch(es) not drawn", g.Hidden)
+		}
+		b.WriteString(styFaint.Render(note) + "\n")
+		body--
+	}
+
+	for i := a.top; i < len(a.rows) && i < a.top+body; i++ {
+		row := a.rows[i]
+		gut := Gutter(row, g.LaneCount, true)
+		if row.Kind == "link" {
+			b.WriteString("  " + gut + "\n")
+			continue
+		}
+		c := row.Commit
+
+		var refs string
+		for _, r := range c.Refs {
+			label := strings.TrimPrefix(r, "HEAD -> ")
+			style := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+			if strings.HasPrefix(r, "HEAD -> ") || r == "HEAD" {
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true)
+			} else if strings.HasPrefix(r, "tag: ") {
+				label = strings.TrimPrefix(r, "tag: ")
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
+			}
+			refs += style.Render(label) + " "
+		}
+
+		age := ago(c.Date)
+		// Reserve the age column up front so the selected row, which is padded
+		// to the full width, cannot push it off the edge.
+		const ageW = 5
+		textW := w - gw - 14 - ageW
+		if textW < 12 {
+			textW = 12
+		}
+		subjW := maxInt(6, textW-lipgloss.Width(refs))
+
+		line := "  " + gut + " " + styFaint.Render(c.Short) + " " + refs +
+			styText.Render(pad(c.Subject, subjW)) + " " + styFaint.Render(pad(age, ageW))
+
+		if i == a.cursor {
+			// Rebuild unstyled so the highlight can be padded to an exact width.
+			plain := fmt.Sprintf("  %s %s %s%s %s", stripANSI(gut), c.Short,
+				stripANSI(refs), pad(c.Subject, subjW), pad(age, ageW))
+			line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(plain, w-1))
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
 func (a *App) viewPlan(w, body int) string {
 	var b strings.Builder
 	if len(a.m.Plan) == 0 {
@@ -216,7 +284,7 @@ func (a *App) footer(w int) string {
 	}
 	help := styFaint.Render("  ") +
 		styKey.Render("j/k") + styFaint.Render(" move  ") +
-		styKey.Render("1-3/tab") + styFaint.Render(" panel  ") +
+		styKey.Render("1-4/tab") + styFaint.Render(" panel  ") +
 		styKey.Render("p") + styFaint.Render(" fix selected  ") +
 		styKey.Render("r") + styFaint.Render(" refresh  ") +
 		styKey.Render("q") + styFaint.Render(" quit")

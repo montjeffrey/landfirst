@@ -13,12 +13,14 @@ import (
 type tab int
 
 const (
-	tabLanding tab = iota
+	tabGraph tab = iota
+	tabLanding
 	tabPlan
 	tabWorktrees
+	tabCount
 )
 
-var tabNames = []string{"landing", "merge plan", "worktrees"}
+var tabNames = []string{"graph", "landing", "merge plan", "worktrees"}
 
 // App is the whole panel state.
 type App struct {
@@ -27,6 +29,7 @@ type App struct {
 	opt  model.Options
 
 	tab    tab
+	rows   []GraphRow // cached printable graph rows
 	cursor int
 	top    int // first visible row, for scrolling
 	w, h   int
@@ -69,6 +72,8 @@ func (a *App) rowCount() int {
 		return 0
 	}
 	switch a.tab {
+	case tabGraph:
+		return len(a.rows)
 	case tabLanding:
 		return len(a.m.Units)
 	case tabPlan:
@@ -94,6 +99,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case builtMsg:
 		a.m = msg.m
+		a.rows = nil
+		if msg.m.Graph != nil {
+			a.rows = BuildGraphRows(msg.m.Graph)
+		}
 		a.loading = false
 		a.status = fmt.Sprintf("read in %dms · git %s · conflict probing: %s",
 			msg.m.BuildMillis, msg.m.GitVersion, msg.m.ConflictMode)
@@ -139,16 +148,18 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.quitting = true
 		return a, tea.Quit
 	case "tab", "right", "l":
-		a.tab = (a.tab + 1) % 3
+		a.tab = (a.tab + 1) % tabCount
 		a.cursor, a.top = 0, 0
 	case "shift+tab", "left":
-		a.tab = (a.tab + 2) % 3
+		a.tab = (a.tab + tabCount - 1) % tabCount
 		a.cursor, a.top = 0, 0
 	case "1":
-		a.tab, a.cursor, a.top = tabLanding, 0, 0
+		a.tab, a.cursor, a.top = tabGraph, 0, 0
 	case "2":
-		a.tab, a.cursor, a.top = tabPlan, 0, 0
+		a.tab, a.cursor, a.top = tabLanding, 0, 0
 	case "3":
+		a.tab, a.cursor, a.top = tabPlan, 0, 0
+	case "4":
 		a.tab, a.cursor, a.top = tabWorktrees, 0, 0
 	case "j", "down":
 		if a.cursor < a.rowCount()-1 {
