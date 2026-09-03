@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/montjeffrey/landfirst/internal/model"
+	"github.com/montjeffrey/landfirst/internal/protocol"
 )
 
 // pad truncates or pads to an exact display width so columns line up even when
@@ -25,7 +25,7 @@ func (a *App) View() string {
 	if a.quitting {
 		return ""
 	}
-	if a.m == nil {
+	if a.snap == nil {
 		return "\n  " + styDim.Render(a.status) + "\n"
 	}
 	w := a.w
@@ -48,12 +48,6 @@ func (a *App) View() string {
 		b.WriteString(a.viewTopology(w, body))
 	case tabGraph:
 		b.WriteString(a.viewGraph(w, body))
-	case tabLanding:
-		b.WriteString(a.viewLanding(w, body))
-	case tabPlan:
-		b.WriteString(a.viewPlan(w, body))
-	case tabWorktrees:
-		b.WriteString(a.viewWorktrees(w, body))
 	}
 	b.WriteString(a.footer(w))
 	return b.String()
@@ -72,14 +66,14 @@ func (a *App) scrollTo(body int) {
 }
 
 func (a *App) header(w int) string {
-	m := a.m
-	title := styTitle.Render(m.Repo)
-	meta := styDim.Render(fmt.Sprintf("  base %s  ·  %d units  ·  %d worktrees", m.Base, len(m.Units), len(m.Worktrees)))
+	snap := a.snap
+	title := styTitle.Render(snap.Repo.Name)
+	meta := styDim.Render(fmt.Sprintf("  base %s  ·  %d units  ·  %d worktrees", snap.Repo.Base, len(snap.Units), len(snap.Worktrees)))
 
 	var banner string
-	if m.AtRisk > 0 {
+	if snap.Summary.AtRisk > 0 {
 		banner = styBanner.Foreground(cBad).Render(fmt.Sprintf(
-			"  %d change(s) across %d branch(es) exist only on this machine", m.StrandedCommits, m.AtRisk))
+			"  %d change(s) across %d branch(es) exist only on this machine", snap.Summary.StrandedCommits, snap.Summary.AtRisk))
 	} else {
 		banner = styBanner.Foreground(cOK).Render("  everything with local work has reached the remote")
 	}
@@ -97,59 +91,6 @@ func (a *App) header(w int) string {
 		styFaint.Render(strings.Repeat("─", w)) + "\n"
 }
 
-func (a *App) viewLanding(w, body int) string {
-	var b strings.Builder
-	nameW := clamp(w-58, 18, 46)
-	lastVerdict := model.Verdict("")
-
-	for i := a.top; i < len(a.m.Units) && i < a.top+body; i++ {
-		u := a.m.Units[i]
-		if u.Verdict != lastVerdict {
-			lastVerdict = u.Verdict
-			info := model.Verdicts[u.Verdict]
-			b.WriteString(lipgloss.NewStyle().Foreground(tone(u.Verdict)).Bold(true).
-				Render(strings.ToUpper(info.Label)) + " " + styFaint.Render(info.Blurb) + "\n")
-		}
-		name := u.Branch
-		if name == "" {
-			name = "(detached " + u.Head + ")"
-		}
-		risk := ""
-		if len(u.Risks) > 0 {
-			kinds := map[string]bool{}
-			var ks []string
-			for _, r := range u.Risks {
-				if !kinds[r.Kind] {
-					kinds[r.Kind] = true
-					ks = append(ks, r.Kind)
-				}
-			}
-			risk = " " + lipgloss.NewStyle().Foreground(cWarn).Render("["+strings.Join(ks, ",")+"]")
-		}
-		wt := ""
-		if n := len(u.Worktrees); n > 0 {
-			wt = lipgloss.NewStyle().Foreground(lipgloss.Color("176")).Render(fmt.Sprintf(" ⬖%d", n))
-		}
-		row := fmt.Sprintf("  %s %s %s %s%s%s",
-			lipgloss.NewStyle().Foreground(tone(u.Verdict)).Render(glyph(u.Verdict)),
-			styText.Render(pad(name, nameW)),
-			styDim.Render(pad(u.Detail, 34)),
-			styFaint.Render(pad(ago(u.Date), 4)),
-			wt, risk)
-		if i == a.cursor {
-			row = stySelected.Render(pad(stripANSI(row), w-1))
-			row = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(
-				fmt.Sprintf("  %s %s %s %s",
-					lipgloss.NewStyle().Foreground(tone(u.Verdict)).Render(glyph(u.Verdict)),
-					styText.Render(pad(name, nameW)),
-					styDim.Render(pad(u.Detail, 34)),
-					styFaint.Render(pad(ago(u.Date), 4))))
-		}
-		b.WriteString(row + "\n")
-	}
-	return b.String()
-}
-
 // viewGraph draws the commit graph on a sub-cell canvas, with the commit text
 // aligned beside it.
 //
@@ -159,7 +100,7 @@ func (a *App) viewLanding(w, body int) string {
 // canvas addresses 2x4 sub-pixels per cell, so edges are real curves and a
 // branch departing its parent is obvious at a glance.
 func (a *App) viewGraph(w, body int) string {
-	g := a.m.Graph
+	g := a.graph
 	if g == nil || len(g.Commits) == 0 {
 		return styDim.Render("  no commits to draw") + "\n"
 	}
@@ -216,7 +157,7 @@ func (a *App) viewGraph(w, body int) string {
 }
 
 // commitText is the right-hand pane: sha, refs, subject, age.
-func (a *App) commitText(c model.Commit, width int, selected bool) string {
+func (a *App) commitText(c protocol.Commit, width int, selected bool) string {
 	if width < 20 {
 		width = 20
 	}
@@ -246,94 +187,72 @@ func (a *App) commitText(c model.Commit, width int, selected bool) string {
 		styText.Render(pad(c.Subject, subjW)) + " " + styFaint.Render(pad(age, ageW))
 }
 
-func (a *App) viewPlan(w, body int) string {
-	var b strings.Builder
-	if len(a.m.Plan) == 0 {
-		return styDim.Render("  nothing waiting to merge") + "\n"
-	}
-	b.WriteString(styFaint.Render(fmt.Sprintf("  %-3s %-42s %8s %8s %6s  %s",
-		"#", "branch", "unlanded", "behind", "confl", "reasoning")) + "\n")
-	for i := a.top; i < len(a.m.Plan) && i < a.top+body; i++ {
-		p := a.m.Plan[i]
-		conf := "—"
-		if p.Conflicts >= 0 {
-			conf = fmt.Sprint(p.Conflicts)
-		}
-		confStyle := styDim
-		if p.Conflicts > 0 {
-			confStyle = lipgloss.NewStyle().Foreground(cBad)
-		} else if p.Conflicts == 0 {
-			confStyle = lipgloss.NewStyle().Foreground(cOK)
-		}
-		row := fmt.Sprintf("  %-3d %s %8d %8d %s  %s",
-			p.Order, styText.Render(pad(p.Branch, 42)), p.Ahead, p.BehindN,
-			confStyle.Render(pad(conf, 6)), styFaint.Render(strings.Join(p.Why, " · ")))
-		if i == a.cursor {
-			row = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(stripANSI(row), w-1))
-		}
-		b.WriteString(row + "\n")
-	}
-	return b.String()
-}
-
-func (a *App) viewWorktrees(w, body int) string {
-	var b strings.Builder
-	for i := a.top; i < len(a.m.Worktrees) && i < a.top+body; i++ {
-		t := a.m.Worktrees[i]
-		br := t.Branch
-		if br == "" {
-			br = "(detached)"
-		}
-		var flags []string
-		if t.IsMain {
-			flags = append(flags, "main")
-		}
-		if t.Prunable {
-			flags = append(flags, "prunable")
-		}
-		for _, r := range t.Risks {
-			flags = append(flags, r.Kind)
-		}
-		fl := ""
-		if len(flags) > 0 {
-			fl = lipgloss.NewStyle().Foreground(cWarn).Render("[" + strings.Join(flags, ",") + "]")
-		}
-		row := fmt.Sprintf("  %s %s %s",
-			styText.Render(pad(br, 38)), styFaint.Render(pad(t.Path, clamp(w-52, 20, 70))), fl)
-		if i == a.cursor {
-			row = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(stripANSI(row), w-1))
-		}
-		b.WriteString(row + "\n")
-	}
-	return b.String()
-}
-
 func (a *App) footer(w int) string {
 	if a.confirm != nil {
-		q := fmt.Sprintf("  run  git %s   ?  ", strings.Join(a.confirm.args, " "))
+		q := "  " + a.confirm.prompt() + "  "
 		return "\n" + lipgloss.NewStyle().Background(lipgloss.Color("58")).Foreground(lipgloss.Color("231")).
 			Bold(true).Render(pad(q+"[y] yes   [any other key] no", w-1))
 	}
+	if a.node != nil {
+		return "\n" + a.treeFooter(w)
+	}
 	help := styFaint.Render("  ") +
 		styKey.Render("j/k") + styFaint.Render(" move  ") +
-		styKey.Render("1-5/tab") + styFaint.Render(" panel  ") +
+		styKey.Render("1/2/tab") + styFaint.Render(" panel  ") +
 		styKey.Render("d") + styFaint.Render(" density  ") +
 		styKey.Render("h/l") + styFaint.Render(" pan  ") +
-		styKey.Render("p") + styFaint.Render(" fix selected  ") +
+		styKey.Render("p") + styFaint.Render(" decide  ") +
+		styKey.Render("w/W") + styFaint.Render(" worktree +/-  ") +
 		styKey.Render("r") + styFaint.Render(" refresh  ") +
 		styKey.Render("q") + styFaint.Render(" quit")
 	return "\n" + styFaint.Render(strings.Repeat("─", w)) + "\n" +
 		help + "\n  " + styFaint.Render(a.status)
 }
 
-func clamp(v, lo, hi int) int {
-	if v < lo {
-		return lo
+// treeFooter renders the decision tree in place of the help line: a
+// question and its numbered options, or a leaf's informational text
+// (manual advice, or why a leaf is currently blocked).
+func (a *App) treeFooter(w int) string {
+	node := a.node
+	if node.Action != nil {
+		return a.leafFooter(w, node.Action)
 	}
-	if v > hi {
-		return hi
+	var b strings.Builder
+	b.WriteString(styFaint.Render(strings.Repeat("─", w)) + "\n")
+	b.WriteString("  " + styText.Render(node.Question) + "\n")
+	for i, opt := range node.Options {
+		suggested := ""
+		if leaf := opt.Next.Action; leaf != nil && a.tree.Suggested != "" && leaf.ID == a.tree.Suggested {
+			suggested = styFaint.Render("  (suggested)")
+		}
+		b.WriteString(fmt.Sprintf("  %s %s%s\n",
+			styKey.Render(fmt.Sprintf("[%d]", i+1)), styText.Render(opt.Answer), suggested))
 	}
-	return v
+	b.WriteString(styFaint.Render("  esc back   q quit"))
+	return b.String()
+}
+
+// leafFooter is only reached for a leaf that is not immediately executable -
+// Class manual, or blocked - since a runnable leaf opens the y/n confirm bar
+// instead (footer's own caller checks a.confirm first).
+func (a *App) leafFooter(w int, action *protocol.Action) string {
+	var b strings.Builder
+	b.WriteString(styFaint.Render(strings.Repeat("─", w)) + "\n")
+	if action.Class == protocol.ClassManual {
+		// today's exact advisory wording (internal/tui's old propose()),
+		// just sourced from Action instead of Remedy.
+		msg := "needs a manual decision — do it by hand"
+		if action.Cwd != "" {
+			msg += " in " + action.Cwd
+		}
+		msg += ": git " + strings.Join(action.Argv, " ")
+		b.WriteString("  " + styText.Render(msg) + "\n")
+	} else {
+		b.WriteString("  " + styText.Render(action.Label) + " — " +
+			lipgloss.NewStyle().Foreground(cWarn).Render("blocked: "+strings.Join(action.Blocked, "; ")) + "\n")
+	}
+	b.WriteString(styFaint.Render("  any key to continue"))
+	return b.String()
 }
 
 // stripANSI removes styling so a highlighted row can be padded to an exact
@@ -353,7 +272,6 @@ func stripANSI(s string) string {
 	}
 	return out.String()
 }
-
 
 // sliceCells takes a window of printable cells out of an already-styled line,
 // skipping ANSI sequences so the escape bytes are neither counted as width nor

@@ -9,16 +9,15 @@ or people committing in separate worktrees, branches finishing at different
 times, and no reliable way to tell which of them actually reached the remote.
 
 ```
-1 landing    2 merge plan    3 worktrees
+1 topology    2 graph
 
-ORPHANED  remote branch was deleted and the changes are not in the base
-  ! feat/kpi-slice-b-restore      3 changes exist only here (4 already in main)   3w
-WRONG UPSTREAM  tracks another branch, so pushing does not publish this work
-  ! feat/team-productivity        tracks origin/main, not origin/feat/team-…      3w
-NEVER PUSHED  has changes the remote has never seen
-  ! feat/orcatec-task5-fanout     30 changes never pushed                    5d ⬖1 [volatile]
+   ●── HEAD  a61b733  merge alpha        8 branches share this fork
+   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
+   │   ↯ 14 file(s) also changed by fix/kpi-compliance-role   loader.ts, seed.sql
+   │  ├! fix/kpi-compliance-role      ━━━━▸ +6 ⬖ .claude/worktrees/kpi clean
+   │  ╰! feat/self-hosted-redis-worker ━━▸ +1 (no worktree)
 
-j/k move   1-3/tab panel   p fix selected   r refresh   q quit
+j/k move   1/2/tab panel   p decide   w/W worktree +/-   r refresh   q quit
 ```
 
 ## Install
@@ -37,10 +36,10 @@ cannot probe is reported as **unknown** rather than quietly reported as clean.
 ## Use
 
 ```bash
-landfirst            # the panel, opening on the graph
+landfirst            # the panel, opening on topology
 landfirst -all       # the entire topology: every branch, every commit
 landfirst -plain     # one-shot text report; pipeable
-landfirst -json      # the whole model, for scripts and agents
+landfirst -json      # the whole snapshot, for scripts and agents
 landfirst -no-probe  # skip conflict probing (much faster on big repos)
 ```
 
@@ -56,14 +55,21 @@ base together sit together:
 
 ```
    ●── HEAD  a61b733  merge alpha        8 branches share this fork
-   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖
+   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
    │   ↯ 14 file(s) also changed by fix/kpi-compliance-role   loader.ts, seed.sql
-   │  ├! fix/kpi-compliance-role      ━━━━▸ +6
-   │  ╰! feat/self-hosted-redis-worker ━━▸ +1 ⬖
+   │  ├! fix/kpi-compliance-role      ━━━━▸ +6 (no worktree)
+   │  ╰! feat/self-hosted-redis-worker ━━▸ +1 ⬖ .claude/worktrees/redis clean
    │
    ●── 232 commits back  9f21c0e  initial import
-   │  ╰! feat/orcatec-phase3-transform-load ━▸ +0
+   │  ╰! feat/orcatec-phase3-transform-load ━▸ +0 (no worktree)
 ```
+
+Every branch also shows *where its worktree is*, if it has one: the path, a
+`dirty:N` count when there are uncommitted changes (omitted when clean), and
+`<op>-in-progress` when a rebase, merge, cherry-pick, revert or bisect is
+mid-flight there. `w` gives the selected branch a worktree at the default
+location; `W` removes one, refusing (and printing the `--force` command
+instead of running it) rather than silently discarding uncommitted work.
 
 ### What "contention" means here
 
@@ -149,19 +155,38 @@ That distinction is the whole point. A board that cries wolf gets ignored.
 
 ## Acting on it
 
-Pressing `p` stages the exact command shown on screen and waits for
-confirmation; the confirmation bar swallows every other key, so a stray
-keystroke cannot fire an action.
+Pressing `p` on a selected branch (topology view only) opens that branch's
+decision tree in the bottom pane. For most verdicts there is only one
+sensible next step, so this goes straight to one of two things:
 
-Only operations that *add* to the remote are ever offered as a one-key action —
-`git push` and `git branch -d`. Anything that rewrites local history is printed
-for you to run yourself and is never executed by the tool, because an agent may
-be mid-commit in that worktree. A test asserts that no action marked safe is
-anything other than push/delete, and that none of them carries `--force`.
+- an **action** — the exact command, with a confirmation bar that swallows
+  every other key, so a stray keystroke can't fire it; or
+- **advice** — the command printed for you to run yourself, because it
+  rewrites history or nothing here is safe to guess at.
+
+For a verdict where both sides genuinely moved (`diverged`), it's a real
+question instead: numbered options (`[1]`, `[2]`, …), the engine's own pick
+marked `(suggested)`, and picking one can lead to another question before it
+bottoms out at an action or a piece of advice. `esc` steps back up the tree
+one level at a time; at the top level it leaves the tree entirely.
+
+Only actions that *add* to the remote or create a ref/worktree are ever
+offered as a one-key action after confirmation — `push`, `worktree add`,
+`branch -d`, `switch -c`, and a non-rewriting `merge`. Anything that rewrites
+local history is printed for you to run yourself and is never executed by the
+tool, because an agent may be mid-commit in that worktree. A test asserts
+that no such action's command lies outside that set, and that none of them
+carries `--force`.
+
+`w` and `W` work the same way for worktrees directly: `w` gives the selected
+branch's own worktree at the default location (confirmed first); `W` removes
+it, or — if it's dirty or mid-operation — refuses and prints the `--force`
+command instead of silently discarding work.
 
 **This is not a read-only tool.** v0.1 was, and said so; v0.2 makes guarded
 writes. It never rewrites history, never force-pushes, and never acts without a
-confirmation, but it does push and delete branches when you ask it to.
+confirmation, but it does push, merge, branch, and manage worktrees when you
+ask it to.
 
 ## History
 

@@ -3,7 +3,6 @@ package model
 import (
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/montjeffrey/landfirst/internal/git"
 )
@@ -18,67 +17,16 @@ func changedFiles(r *git.Repo, branch string) map[string]bool {
 	return set
 }
 
-func probeMerge(r *git.Repo, mode, a, b string) (conflicts []string, unknown bool) {
-	if mode == "full" {
-		out, err := git.Run(r.Root, "merge-tree", "--write-tree", "--name-only", a, b)
-		if err == nil {
-			return nil, false // clean
-		}
-		// Exit 1 means conflicts, and stdout lists them. Any other code is a
-		// failure to probe, which must never be reported as "clean".
-		if git.ExitCode(err) != 1 {
-			return nil, true
-		}
-		lines := strings.Split(out, "\n")
-		for i := 1; i < len(lines); i++ {
-			l := strings.TrimSpace(lines[i])
-			if l == "" {
-				break
-			}
-			conflicts = append(conflicts, l)
-		}
-		return conflicts, false
-	}
-
-	base := strings.TrimSpace(git.Try(r.Root, "merge-base", a, b))
-	if base == "" {
-		return nil, true
-	}
-	out := git.Try(r.Root, "merge-tree", base, a, b)
-	if out == "" {
-		return nil, true
-	}
-	return parseLegacyMergeTree(out), false
-}
-
-// parseLegacyMergeTree reads pre-2.38 merge-tree output, which describes each
-// changed path and shows conflict markers inside the hunk.
-func parseLegacyMergeTree(out string) []string {
-	seen := map[string]bool{}
-	var order []string
-	var path string
-	for _, raw := range strings.Split(out, "\n") {
-		l := strings.TrimRight(raw, "\r")
-		if l == "" {
-			continue
-		}
-		if !strings.ContainsAny(l[:1], " \t@+-") {
-			path = ""
-			continue
-		}
-		if f := reMergeTreePath.FindStringSubmatch(l); f != nil {
-			path = f[1]
-			continue
-		}
-		if path != "" && strings.HasPrefix(l, "+<<<<<<<") && !seen[path] {
-			seen[path] = true
-			order = append(order, path)
-		}
-	}
-	return order
-}
-
-func buildPlan(r *git.Repo, units []Unit, opt Options, mode string) ([]PlanItem, []Collision) {
+// buildPlan orders branches by how safe they are to merge next.
+//
+// Conflict counts come from contentions (buildContentions, forks.go) instead
+// of a probe loop of its own: that function already restricts itself to
+// same-fork pairs with genuine file overlap - it only ever constructs a
+// Contention when len(shared) > 0 - so every entry already represents a real
+// collision. Comparing every candidate pair here too, cross-fork included,
+// would just re-measure the era drift Contention's doc comment describes and
+// duplicate work buildContentions already did more precisely.
+func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool) []PlanItem {
 	type cand struct {
 		u     Unit
 		files map[string]bool
@@ -88,53 +36,27 @@ func buildPlan(r *git.Repo, units []Unit, opt Options, mode string) ([]PlanItem,
 		if u.Branch == "" || u.Branch == r.Base {
 			continue
 		}
-		// Only branches with work worth merging.
-		if u.Verdict == SafeToDelete || u.Verdict == Landed || u.Verdict == Behind {
+		// Only branches with work worth merging. InProgress is excluded too:
+		// its whole point is that no action on the unit is safe to suggest
+		// until the stuck rebase/merge/cherry-pick resolves - recommending a
+		// merge order for it would be exactly the wrong kind of suggestion.
+		if u.Verdict == SafeToDelete || u.Verdict == Landed || u.Verdict == Behind || u.Verdict == InProgress {
 			continue
 		}
 		cands = append(cands, cand{u, changedFiles(r, u.Branch)})
 	}
 
-	var collisions []Collision
-	if opt.Probe {
-		pairs := 0
-		for i := 0; i < len(cands); i++ {
-			for j := i + 1; j < len(cands); j++ {
-				if opt.MaxPairs > 0 && pairs >= opt.MaxPairs {
-					break
-				}
-				shared := 0
-				for f := range cands[i].files {
-					if cands[j].files[f] {
-						shared++
-					}
-				}
-				if shared == 0 {
-					continue
-				}
-				pairs++
-				cf, unknown := probeMerge(r, mode, cands[i].u.Branch, cands[j].u.Branch)
-				collisions = append(collisions, Collision{
-					A: cands[i].u.Branch, B: cands[j].u.Branch,
-					Shared: shared, Conflicts: cf, Unknown: unknown,
-				})
-			}
-		}
-	}
-
 	collideCount := map[string]int{}
-	for _, c := range collisions {
-		if len(c.Conflicts) > 0 {
-			collideCount[c.A]++
-			collideCount[c.B]++
-		}
+	for _, c := range contentions {
+		collideCount[c.A]++
+		collideCount[c.B]++
 	}
 
 	items := make([]PlanItem, 0, len(cands))
 	for _, c := range cands {
 		var why []string
 		conf := -1
-		if opt.Probe {
+		if probed {
 			conf = collideCount[c.u.Branch]
 			if conf == 0 {
 				why = append(why, "collides with nothing")
@@ -174,5 +96,5 @@ func buildPlan(r *git.Repo, units []Unit, opt Options, mode string) ([]PlanItem,
 	for i := range items {
 		items[i].Order = i + 1
 	}
-	return items, collisions
+	return items
 }

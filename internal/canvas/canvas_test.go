@@ -55,7 +55,6 @@ func TestOutOfRangeWritesAreClipped(t *testing.T) {
 	cv.Set(999, 999, 0)
 	cv.Line(-20, -20, 40, 40, 0)
 	cv.Curve(-9, -9, 50, 3, 60, 60, 0)
-	cv.Dot(100, 100, 4, 0)
 	for _, l := range cv.Render(nil) {
 		_ = l
 	}
@@ -117,45 +116,5 @@ func TestColourIsEmittedIdenticallyRegardlessOfEnvironment(t *testing.T) {
 	const want = "\x1b[38;5;42m\u2801\x1b[0m"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
-	}
-}
-
-func TestDotIsRound(t *testing.T) {
-	// A braille sub-pixel is close to square, so a radius-r dot should be about
-	// as wide as it is tall. An earlier version weighted y as though sub-pixels
-	// were half-height, which stretched every node into an ellipse.
-	cv := New(8, 4)
-	cx, cy := cv.Width()/2, cv.Height()/2
-	const r = 3
-	cv.Dot(cx, cy, r, 0)
-
-	minX, maxX, minY, maxY := cv.Width(), -1, cv.Height(), -1
-	for y := 0; y < cv.Height(); y++ {
-		for x := 0; x < cv.Width(); x++ {
-			cell := (y/SubY)*cv.cols + (x / SubX)
-			if cv.bits[cell]&dotBit[x%SubX][y%SubY] != 0 {
-				if x < minX { minX = x }
-				if x > maxX { maxX = x }
-				if y < minY { minY = y }
-				if y > maxY { maxY = y }
-			}
-		}
-	}
-	w, h := maxX-minX+1, maxY-minY+1
-	if w != h {
-		t.Fatalf("dot is %dx%d sub-pixels; expected square for a round node", w, h)
-	}
-	if w != 2*r+1 {
-		t.Fatalf("dot spans %d sub-pixels, want %d for radius %d", w, 2*r+1, r)
-	}
-}
-
-// A node must never bleed into a neighbouring lane, or branch colours blur.
-func TestDotFitsInsideItsLane(t *testing.T) {
-	const laneSubPixels = 3 * SubX // laneCells = 3
-	const r = 2
-	if 2*r+1 > laneSubPixels {
-		t.Fatalf("a radius-%d node is %d sub-pixels wide but lanes are %d apart",
-			r, 2*r+1, laneSubPixels)
 	}
 }

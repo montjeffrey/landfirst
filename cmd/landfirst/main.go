@@ -4,14 +4,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/montjeffrey/landfirst/internal/engine"
 	"github.com/montjeffrey/landfirst/internal/git"
-	"github.com/montjeffrey/landfirst/internal/model"
+	"github.com/montjeffrey/landfirst/internal/protocol"
 	"github.com/montjeffrey/landfirst/internal/tui"
 )
 
@@ -37,32 +40,50 @@ func main() {
 	}
 
 	cwd, _ := os.Getwd()
-	repo, err := git.Open(cwd)
+	eng, err := engine.Open(cwd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landfirst:", err)
-		os.Exit(1)
+		// A resolvable-base/remote failure means "fix the repo", not "landfirst
+		// crashed" - distinguish it from other Open errors (e.g. not a git repo).
+		// engine.Open passes git.Open's error through unwrapped, so the same
+		// sentinels still apply here.
+		code := 1
+		if errors.Is(err, git.ErrNoBase) || errors.Is(err, git.ErrNoRemote) {
+			code = 2
+		}
+		os.Exit(code)
 	}
-	opt := model.Options{Probe: !*noProbe, MaxPairs: *maxPairs, Limit: *limit, MaxBranches: *branches}
-	if *all {
-		opt.Limit, opt.MaxBranches = -1, -1
+	defer eng.Close()
+
+	stage := protocol.StageFull
+	if *noProbe {
+		stage = protocol.StageFast
 	}
+	snapOpt := engine.SnapshotOptions{Stage: stage, MaxPairs: *maxPairs}
+	graphOpt := protocol.GraphOptions{Limit: *limit, Branches: *branches, All: *all}
 
 	if *asJSON || *plain {
-		m := model.Build(repo, opt)
+		snap, err := eng.Snapshot(context.Background(), snapOpt)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "landfirst:", err)
+			os.Exit(1)
+		}
 		if *asJSON {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			_ = enc.Encode(m)
+			_ = enc.Encode(snap)
 			return
 		}
-		fmt.Print(tui.PlainReport(m))
+		fmt.Print(tui.PlainReport(snap))
 		return
 	}
 
 	// The panel takes the alternate screen so it behaves like a docked app and
 	// leaves the shell scrollback untouched on exit.
-	app := tui.New(repo, opt)
+	app := tui.New(eng)
 	app.SetDensity(tui.ParseDensity(*density))
+	app.SetGraphOptions(graphOpt)
+	app.SetSnapshotOptions(snapOpt)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "landfirst:", err)

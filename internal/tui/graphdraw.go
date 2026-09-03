@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/montjeffrey/landfirst/internal/canvas"
-	"github.com/montjeffrey/landfirst/internal/model"
+	"github.com/montjeffrey/landfirst/internal/protocol"
 )
 
 // Density controls how much vertical room each commit gets. A docked panel is
@@ -36,6 +36,10 @@ func (d Density) rowsPerCommit() int {
 // it bleeding into the neighbouring lane.
 const laneCells = 3
 
+// lanePalette maps a commit's lane-derived colour index to a 256-colour
+// terminal code for the canvas renderer.
+var lanePalette = []int{39, 78, 203, 141, 179, 43, 215, 111, 176, 79, 221, 167}
+
 // GraphCanvas is a drawn graph plus the row each commit landed on, so the text
 // pane beside it can line up exactly.
 type GraphCanvas struct {
@@ -49,7 +53,7 @@ type GraphCanvas struct {
 // Edges are drawn as quadratic beziers rather than box characters: a branch
 // leaving its parent becomes a curve that visibly departs and rejoins, instead
 // of a staircase of corner glyphs that has to be decoded.
-func DrawGraph(g *model.Graph, d Density, maxRows int) GraphCanvas {
+func DrawGraph(g *protocol.Graph, d Density, maxRows int) GraphCanvas {
 	if g == nil || len(g.Commits) == 0 {
 		return GraphCanvas{}
 	}
@@ -69,7 +73,7 @@ func DrawGraph(g *model.Graph, d Density, maxRows int) GraphCanvas {
 
 	visible := func(row int) bool { return rowY(row) < cv.Height() }
 
-	byHash := make(map[string]*model.Commit, len(g.Commits))
+	byHash := make(map[string]*protocol.Commit, len(g.Commits))
 	for i := range g.Commits {
 		byHash[g.Commits[i].Hash] = &g.Commits[i]
 	}

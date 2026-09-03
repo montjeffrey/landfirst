@@ -5,7 +5,6 @@ package tui
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/montjeffrey/landfirst/internal/model"
 )
 
 var (
@@ -17,44 +16,67 @@ var (
 	cFaint = lipgloss.Color("240")
 	cText  = lipgloss.Color("252")
 
-	styTitle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	styDim      = lipgloss.NewStyle().Foreground(cDim)
-	styFaint    = lipgloss.NewStyle().Foreground(cFaint)
-	styText     = lipgloss.NewStyle().Foreground(cText)
-	styTabOn    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("238")).Padding(0, 1)
-	styTabOff   = lipgloss.NewStyle().Foreground(cDim).Padding(0, 1)
-	stySelected = lipgloss.NewStyle().Background(lipgloss.Color("236"))
-	styKey      = lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-	styBanner   = lipgloss.NewStyle().Bold(true)
+	styTitle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	styDim    = lipgloss.NewStyle().Foreground(cDim)
+	styFaint  = lipgloss.NewStyle().Foreground(cFaint)
+	styText   = lipgloss.NewStyle().Foreground(cText)
+	styTabOn  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("238")).Padding(0, 1)
+	styTabOff = lipgloss.NewStyle().Foreground(cDim).Padding(0, 1)
+	styKey    = lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+	styBanner = lipgloss.NewStyle().Bold(true)
 )
 
-// tone maps a verdict to the colour used for it everywhere in the app.
-func tone(v model.Verdict) lipgloss.Color {
-	switch model.Verdicts[v].Rank {
-	case 0, 1, 2:
-		return cBad
-	case 3, 4, 5:
-		return cWarn
-	case 6:
-		return cInfo
-	case 7:
-		return cDim
-	}
-	return cOK
+// verdictSeverity buckets a wire verdict string (protocol.Unit.Verdict) into
+// how urgently it needs attention. Mirrors internal/model.Verdict.Severity()'s
+// own bucketing (internal/model/types.go) - duplicated rather than imported,
+// because tui sits behind the protocol boundary and only ever sees the
+// string protocol.Unit.Verdict already carries (internal/protocol's own doc:
+// "the only thing an adapter imports"). Same tradeoff internal/engine's own
+// baseRefOf makes against internal/model's baseRef: one small duplicated
+// mapping is cheaper than opening a seam across the boundary for it.
+type verdictSeverity int
+
+const (
+	sevBad  verdictSeverity = iota // blocks progress or risks losing work outright
+	sevWarn                        // needs a decision, nothing lost yet
+	sevInfo                        // routine cleanup
+	sevDim                         // no local work, just behind
+	sevOK                          // nothing to do
+)
+
+var severityByVerdict = map[string]verdictSeverity{
+	"in-progress":    sevBad,
+	"orphaned":       sevBad,
+	"wrong-upstream": sevBad,
+	"never-pushed":   sevBad,
+	"diverged":       sevWarn,
+	"unpushed":       sevWarn,
+	"detached":       sevWarn,
+	"safe-to-delete": sevInfo,
+	"behind":         sevDim,
+	"landed":         sevOK,
 }
 
-// glyph carries the same information as the colour, for terminals and readers
-// where colour is not available.
-func glyph(v model.Verdict) string {
-	switch model.Verdicts[v].Rank {
-	case 0, 1, 2:
-		return "!"
-	case 3, 4, 5:
-		return "~"
-	case 6:
-		return "-"
-	case 7:
-		return "."
+func severityOf(verdict string) verdictSeverity {
+	if s, ok := severityByVerdict[verdict]; ok {
+		return s
 	}
-	return "+"
+	return sevOK
+}
+
+// verdictMark is the glyph and colour used for a verdict everywhere in the
+// app - a terminal without colour still reads the glyph, so meaning never
+// depends on colour alone.
+func verdictMark(verdict string) (string, lipgloss.Color) {
+	switch severityOf(verdict) {
+	case sevBad:
+		return "!", cBad
+	case sevWarn:
+		return "~", cWarn
+	case sevInfo:
+		return "-", cInfo
+	case sevDim:
+		return ".", cDim
+	}
+	return "·", cOK
 }

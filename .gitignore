@@ -6,3 +6,6 @@
 # local scratch
 *.log
 .DS_Store
+
+# per-machine agent-harness memory store - never leaves the machine
+/.agent-harness/

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/montjeffrey/landfirst/internal/engine/state"
 	"github.com/montjeffrey/landfirst/internal/git"
 )
 
@@ -47,22 +48,37 @@ func Build(r *git.Repo, opt Options) *Model {
 	m := &Model{
 		Repo: r.Name, Root: r.Root, Base: r.Base, Remote: r.Remote,
 		GeneratedAt: time.Now(), GitVersion: ver, ConflictMode: mode,
-		Units: units, Worktrees: trees,
+		Freshness: collectFreshness(r),
+		Units:     units, Worktrees: trees,
 	}
 
+	// A zero FetchHeadAt (never fetched) makes time.Since huge rather than
+	// overflowing - Duration.Sub clamps to its max representable value
+	// instead of wrapping - so it reads as stale with no IsZero special case.
+	const staleThreshold = time.Hour
+	for i := range m.Units {
+		m.Units[i].Stale = state.IsStale(m.Freshness.FetchHeadAt, staleThreshold)
+	}
+
+	// SeverityBad covers InProgress/Orphaned/WrongUpstream/NeverPushed - the
+	// same set the topology view marks "!" - stuck mid-rebase work is exactly
+	// the "might get lost" signal this metric exists for, same as the other
+	// three.
 	for _, u := range units {
-		if Verdicts[u.Verdict].Rank <= 2 && u.Unlanded > 0 {
+		if u.Verdict.Severity() == SeverityBad && u.Unlanded > 0 {
 			m.StrandedCommits += u.Unlanded
 			m.AtRisk++
 		}
 	}
 
-	m.Plan, m.Collisions = buildPlan(r, units, opt, mode)
-	m.Graph = buildGraph(r, units, opt)
+	// Forks and contentions must exist before the plan is built: buildPlan
+	// derives PlanItem.Conflicts from contentions rather than probing itself.
 	m.Forks = buildForks(r, units)
 	if opt.Probe {
 		m.Contentions = buildContentions(r, m.Forks, mode, opt.MaxPairs)
 	}
+	m.Plan = buildPlan(r, units, m.Contentions, opt.Probe)
+	m.Graph = buildGraph(r, units, opt)
 	m.BuildMillis = time.Since(start).Milliseconds()
 	return m
 }

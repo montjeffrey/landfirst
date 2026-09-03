@@ -168,13 +168,51 @@ func TestRemedyIsNeverUnsafeForAutomaticActions(t *testing.T) {
 	}
 }
 
+// TestNoRemoteConfiguredOffersNoAutoPushRemedy guards a bug a review caught:
+// git.Open leaves Remote == "" for a legitimate local-only repo rather than
+// guessing "origin" - but remedy() built its push args unconditionally, so a
+// NeverPushed branch there got a Safe:true remedy whose argv was literally
+// "push -u ” branch:branch". One keypress away from actually running it.
+func TestNoRemoteConfiguredOffersNoAutoPushRemedy(t *testing.T) {
+	dir := t.TempDir()
+	f := &fixture{t: t, dir: filepath.Join(dir, "repo")}
+	if err := os.MkdirAll(f.dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.run("init", "-q", "-b", "main")
+	f.run("config", "user.email", "t@example.invalid")
+	f.run("config", "user.name", "Test")
+	f.commit("a.txt", "base", "init") // no remote added anywhere
+	f.run("checkout", "-q", "-b", "feat/local-only")
+	f.commit("n.txt", "local", "never pushed, no remote configured at all")
+	f.run("checkout", "-q", "main")
+
+	m := f.build()
+	if m.Remote != "" {
+		t.Fatalf("test setup: expected an empty Remote, got %q", m.Remote)
+	}
+	for _, u := range m.Units {
+		if u.Branch != "feat/local-only" {
+			continue
+		}
+		if u.Verdict != NeverPushed {
+			t.Fatalf("verdict = %q, want %q", u.Verdict, NeverPushed)
+		}
+		if u.Remedy != nil {
+			t.Fatalf("a repo with no remote must not offer a push remedy, got %+v", u.Remedy)
+		}
+		return
+	}
+	t.Fatal("feat/local-only not found in units")
+}
+
 func TestWorktreeLocationRisksAreDetected(t *testing.T) {
 	cases := []struct{ path, want string }{
 		{"C:/tmp/des-crm-thing", "volatile"},
 		{"/home/u/OneDrive - corp/repo", "cloud"},
 	}
 	for _, c := range cases {
-		risks := locationRisk(c.path, "/some/root")
+		risks := LocationRisk(c.path, "/some/root")
 		found := false
 		for _, r := range risks {
 			if r.Kind == c.want {
@@ -185,7 +223,7 @@ func TestWorktreeLocationRisksAreDetected(t *testing.T) {
 			t.Fatalf("%s should be flagged %q, got %v", c.path, c.want, risks)
 		}
 	}
-	nested := locationRisk("/repo/.claude/worktrees/x", "/repo")
+	nested := LocationRisk("/repo/.claude/worktrees/x", "/repo")
 	if len(nested) == 0 || nested[len(nested)-1].Kind != "nested" {
 		t.Fatalf("a worktree inside the main worktree should be flagged nested, got %v", nested)
 	}

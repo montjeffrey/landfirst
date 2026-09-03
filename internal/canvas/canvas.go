@@ -184,47 +184,6 @@ func (c *Canvas) EllipseRing(cx, cy, rx, ry, colour int) {
 	}
 }
 
-// Dot draws a filled node of the given sub-pixel radius, the visual weight that
-// distinguishes a commit from the lines running past it.
-func (c *Canvas) Dot(cx, cy, r, colour int) {
-	if r < 1 {
-		c.Set(cx, cy, colour)
-		return
-	}
-	// A terminal cell is roughly twice as tall as it is wide, and braille
-	// splits it 2 across by 4 down - so a braille sub-pixel is very nearly
-	// square and needs no aspect correction. Weighting y here (an easy
-	// assumption to carry over from half-block rendering) stretches every
-	// node into a vertical ellipse.
-	r2 := r * r
-	for dy := -r; dy <= r; dy++ {
-		for dx := -r; dx <= r; dx++ {
-			if dx*dx+dy*dy <= r2 {
-				c.Set(cx+dx, cy+dy, colour)
-			}
-		}
-	}
-}
-
-// Ring draws an outlined node, used for merge commits so they are
-// distinguishable from ordinary ones without relying on colour.
-func (c *Canvas) Ring(cx, cy, r, colour int) {
-	if r < 1 {
-		c.Set(cx, cy, colour)
-		return
-	}
-	r2 := r * r
-	inner := (r - 1) * (r - 1)
-	for dy := -r; dy <= r; dy++ {
-		for dx := -r; dx <= r; dx++ {
-			d := dx*dx + dy*dy
-			if d <= r2 && d >= inner {
-				c.Set(cx+dx, cy+dy, colour)
-			}
-		}
-	}
-}
-
 // Render turns the canvas into printable lines. Palette maps a colour index to
 // a 256-colour terminal code; a nil palette renders uncoloured.
 //
