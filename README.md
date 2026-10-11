@@ -12,7 +12,7 @@ times, and no reliable way to tell which of them actually reached the remote.
 1 topology    2 graph
 
    ●── HEAD  a61b733  merge alpha        8 branches share this fork
-   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
+   │  ├! feat/importer-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
    │   ↯ 14 file(s) also changed by fix/kpi-compliance-role   loader.ts, seed.sql
    │  ├! fix/kpi-compliance-role      ━━━━▸ +6 ⬖ .claude/worktrees/kpi clean
    │  ╰! feat/self-hosted-redis-worker ━━▸ +1 (no worktree)
@@ -55,13 +55,13 @@ base together sit together:
 
 ```
    ●── HEAD  a61b733  merge alpha        8 branches share this fork
-   │  ├! feat/orcatec-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
+   │  ├! feat/importer-task5-fanout    ━━━━━━━━━━━▸ +33 ⬖ C:\tmp\wt5 dirty:2 rebase-in-progress
    │   ↯ 14 file(s) also changed by fix/kpi-compliance-role   loader.ts, seed.sql
    │  ├! fix/kpi-compliance-role      ━━━━▸ +6 (no worktree)
    │  ╰! feat/self-hosted-redis-worker ━━▸ +1 ⬖ .claude/worktrees/redis clean
    │
    ●── 232 commits back  9f21c0e  initial import
-   │  ╰! feat/orcatec-phase3-transform-load ━▸ +0 (no worktree)
+   │  ╰! feat/importer-phase3-transform-load ━▸ +0 (no worktree)
 ```
 
 Every branch also shows *where its worktree is*, if it has one: the path, a
