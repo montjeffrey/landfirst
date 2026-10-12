@@ -195,7 +195,7 @@ func TestDecisionTreeNeverPushed(t *testing.T) {
 // internal/git/open.go's ErrNoRemote doc) must not get an executable push
 // leaf built from an empty remote.
 func TestDecisionTreeNeverPushedNoRemote(t *testing.T) {
-	dir := t.TempDir()
+	dir := realTempDir(t)
 	f := &efixture{t: t, dir: filepath.Join(dir, "repo")}
 	if err := os.MkdirAll(f.dir, 0o755); err != nil {
 		t.Fatal(err)

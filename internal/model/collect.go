@@ -67,9 +67,10 @@ func collectBranches(r *git.Repo) []rawBranch {
 // independently-drifting copy of "is this path safe" living in engine too.
 func LocationRisk(path, root string) []Risk {
 	p := strings.ReplaceAll(path, "\\", "/")
-	rt := strings.ReplaceAll(root, "\\", "/")
 	var risks []Risk
-	low := strings.ToLower(p)
+	// The raw spelling and the canonical one are both checked: a symlink
+	// into a synced folder is still a synced folder.
+	low := strings.ToLower(p + "|" + canonical(path))
 	if strings.Contains(low, "/tmp/") || strings.Contains(low, "/temp/") ||
 		strings.Contains(low, "/appdata/local/temp/") {
 		risks = append(risks, Risk{"volatile", "in a temp directory - the OS can delete this"})
@@ -80,10 +81,48 @@ func LocationRisk(path, root string) []Risk {
 			break
 		}
 	}
-	if p != rt && strings.HasPrefix(p, rt+"/") {
+	// Compared after canonicalising both sides. As raw strings one directory
+	// has many spellings - a symlink, macOS's /var -> /private/var, a Windows
+	// 8.3 short name, different case on a case-insensitive filesystem - and
+	// any of them slipped a nested path past a plain prefix test.
+	if cp, cr := foldedPath(path), foldedPath(root); cp != cr && strings.HasPrefix(cp, cr+"/") {
 		risks = append(risks, Risk{"nested", "nested inside the main worktree"})
 	}
 	return risks
+}
+
+// canonical resolves path as far as the filesystem allows: absolute, cleaned,
+// symlinks and Windows short names expanded, forward slashes. A worktree path
+// usually does not exist yet, so the deepest existing ancestor is resolved and
+// the not-yet-created remainder is joined back on.
+func canonical(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	var rest []string
+	for cur := abs; ; {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.ToSlash(filepath.Join(append([]string{real}, rest...)...))
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return filepath.ToSlash(abs)
+		}
+		rest = append([]string{filepath.Base(cur)}, rest...)
+		cur = parent
+	}
+}
+
+// foldedPath is canonical, lower-cased where the filesystem ignores case.
+// Windows and macOS do by default; treating a case-sensitive volume as
+// case-insensitive can only make the nesting check refuse more, never less.
+func foldedPath(path string) string {
+	c := canonical(path)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		c = strings.ToLower(c)
+	}
+	return c
 }
 
 // collectWorktrees uses -z throughout: a worktree or branch name can contain

@@ -78,6 +78,14 @@ func (w *worktreeService) Add(ctx context.Context, req protocol.WorktreeAddReque
 		}
 	}
 
+	// git worktree add runs from the repo root (below), so it resolves a
+	// relative path against the root: "nested-wt" lands inside the repo.
+	// Resolve it the same way here, so the location check judges the path
+	// git will actually create, and hand git that same absolute path.
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(e.repo.Root, path)
+	}
+
 	// Only cloud/nested are the plan's own refusal criteria ("refuse a path
 	// under the repo root or under any cloud-sync directory") - "volatile"
 	// (a temp dir) is informational elsewhere (collectWorktrees surfaces it
