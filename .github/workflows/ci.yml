@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only by default; nothing in CI needs to write.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: ${{ matrix.os }}
@@ -14,8 +18,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.23'
           cache: true
@@ -39,8 +43,8 @@ jobs:
     name: pre-2.38 git fallback
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.23'
           cache: true
@@ -52,3 +56,28 @@ jobs:
           git config --global user.name CI
           git config --global init.defaultBranch main
       - run: go test ./... -count=1
+
+  # Known vulnerabilities that the code can actually reach. Advisories in
+  # dependencies the code never calls are reported but do not fail the build.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          go-version-input: stable
+
+  # Every commit, not just the tip: a secret removed later is still in history.
+  # gitleaks is built from source at a pinned version, so Go's checksum
+  # database vouches for it and no third-party action is trusted.
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: stable
+      - name: gitleaks
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --no-banner .
