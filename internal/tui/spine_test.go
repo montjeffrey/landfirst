@@ -160,7 +160,10 @@ type tfixture struct {
 
 func newTfixture(t *testing.T) *tfixture {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
 	f := &tfixture{t: t, dir: filepath.Join(dir, "repo")}
 	remote := filepath.Join(dir, "remote.git")
 	if err := os.MkdirAll(f.dir, 0o755); err != nil {
