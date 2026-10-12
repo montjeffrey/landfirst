@@ -24,9 +24,21 @@ type efixture struct {
 	dir string
 }
 
+// realTempDir is t.TempDir with symlinks and short names resolved. git
+// reports canonical paths (macOS's /private/var, Windows' long names), so a
+// fixture built under an aliased temp dir would never compare equal to them.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	return dir
+}
+
 func newEfixture(t *testing.T) *efixture {
 	t.Helper()
-	dir := t.TempDir()
+	dir := realTempDir(t)
 	f := &efixture{t: t, dir: filepath.Join(dir, "repo")}
 	remote := filepath.Join(dir, "remote.git")
 	if err := os.MkdirAll(f.dir, 0o755); err != nil {
@@ -141,7 +153,7 @@ func TestSnapshotMapsWorktreeIDsConsistently(t *testing.T) {
 	f.commit("w.txt", "work", "work on a worktree")
 	f.run("checkout", "-q", "main")
 
-	wtDir := filepath.Join(t.TempDir(), "wt")
+	wtDir := filepath.Join(realTempDir(t), "wt")
 	f.run("worktree", "add", "-q", wtDir, "feat/wt")
 
 	eng, err := Open(f.dir)
