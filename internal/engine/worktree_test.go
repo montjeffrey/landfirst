@@ -174,6 +174,27 @@ func TestWorktreeAddRefusesUnsafePaths(t *testing.T) {
 	}
 }
 
+// TestWorktreeAddRefusesRelativeNestedPath: git worktree add runs from the
+// repo root, so a relative path lands inside the repo. The guard has to judge
+// the path git will create, not the string it was handed.
+func TestWorktreeAddRefusesRelativeNestedPath(t *testing.T) {
+	f := newEfixture(t)
+	eng, err := Open(f.dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer eng.Close()
+	_, err = eng.Worktrees().Add(context.Background(), protocol.WorktreeAddRequest{
+		Branch: "feat/relative", NewBranch: true, Path: "nested-rel",
+	})
+	if !errors.Is(err, ErrUnsafeWorktreePath) {
+		t.Fatalf("Add into relative path: err = %v, want ErrUnsafeWorktreePath", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(f.dir, "nested-rel")); statErr == nil {
+		t.Fatal("a refused Add must not have created the nested worktree")
+	}
+}
+
 // TestWorktreeAddRefusesMalformedBranchName proves the branch name is
 // validated with `git check-ref-format --branch` before anything else runs -
 // the argv-injection guard this API substitutes for Execute's confirmation

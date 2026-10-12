@@ -204,7 +204,10 @@ func TestWatchCoalescesRapidMutations(t *testing.T) {
 	}
 
 	var fastCount, fullCount int
-	timeout := time.After(2 * time.Second)
+	// Generous because Windows runners take seconds to reach the full stage.
+	// It bounds only the wait for the first fast+full pair; the coalescing
+	// assertion still allows no extra event within 400ms after that pair.
+	timeout := time.After(10 * time.Second)
 collect:
 	for {
 		select {
