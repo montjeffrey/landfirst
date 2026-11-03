@@ -92,7 +92,7 @@ func LocationRisk(path, root string) []Risk {
 }
 
 // canonical resolves path as far as the filesystem allows: absolute, cleaned,
-// symlinks and Windows short names expanded, forward slashes. A worktree path
+// symlinks, junctions and Windows short names expanded, forward slashes. A worktree path
 // usually does not exist yet, so the deepest existing ancestor is resolved and
 // the not-yet-created remainder is joined back on.
 func canonical(path string) string {
@@ -102,7 +102,7 @@ func canonical(path string) string {
 	}
 	var rest []string
 	for cur := abs; ; {
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
+		if real, err := resolveExisting(cur); err == nil {
 			return filepath.ToSlash(filepath.Join(append([]string{real}, rest...)...))
 		}
 		parent := filepath.Dir(cur)
