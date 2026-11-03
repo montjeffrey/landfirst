@@ -1,6 +1,6 @@
 module github.com/montjeffrey/landfirst
 
-go 1.23
+go 1.27.3
 
 require (
 	github.com/charmbracelet/bubbletea v1.2.4
