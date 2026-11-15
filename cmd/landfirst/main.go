@@ -104,7 +104,7 @@ func main() {
 		defer stop()
 		snap, err := eng.Snapshot(ctx, snapOpt)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "landfirst:", err)
+			fmt.Fprintln(os.Stderr, "landfirst:", tui.Sanitize(err.Error()))
 			os.Exit(1)
 		}
 		if *asJSON {
