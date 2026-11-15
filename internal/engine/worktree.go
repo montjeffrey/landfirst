@@ -222,6 +222,19 @@ func (w *worktreeService) Remove(ctx context.Context, req protocol.WorktreeRemov
 	case !wt.PathExists:
 		return w.runAndSnapshot(ctx, []string{"worktree", "prune"})
 	case wt.Dirty == (protocol.DirtyState{}) && wt.Op == "none":
+		// Clean to git's own definition, but "worktree remove" also deletes
+		// ignored files - a .env, a local database, a build cache - which
+		// status does not count as dirt. Refuse when there are any, and when
+		// they cannot be listed: not knowing is not permission.
+		if note := w.ignoredFilesNote(ctx, wt.Path); note != "" {
+			return &protocol.ExecuteResult{
+				Ran:      false,
+				Argv:     []string{"worktree", "remove", "--force", wt.Path},
+				Cwd:      e.repo.Root,
+				Revision: snap.Revision,
+				Note:     note,
+			}, nil
+		}
 		return w.runAndSnapshot(ctx, []string{"worktree", "remove", wt.Path})
 	default:
 		// Dirty, or an operation in progress: never silently discard work.
@@ -294,4 +307,29 @@ func findWorktree(snap *protocol.Snapshot, id string) *protocol.Worktree {
 		}
 	}
 	return nil
+}
+
+// ignoredFilesNote lists (a few of) the ignored files git would delete along
+// with the worktree at path, as a sentence for the operator. "" means there are
+// none.
+func (w *worktreeService) ignoredFilesNote(ctx context.Context, path string) string {
+	out, err := git.RunCtx(ctx, path, nil, "status", "--porcelain", "--ignored", "-z")
+	if err != nil {
+		return "not removed: could not check the worktree for ignored files (" + err.Error() + "); remove it by hand if you are sure"
+	}
+	var ignored []string
+	for _, rec := range strings.Split(out, "\x00") {
+		if strings.HasPrefix(rec, "!! ") {
+			ignored = append(ignored, strings.TrimPrefix(rec, "!! "))
+		}
+	}
+	if len(ignored) == 0 {
+		return ""
+	}
+	const show = 5
+	list := ignored
+	if len(list) > show {
+		list = append(append([]string{}, list[:show]...), fmt.Sprintf("and %d more", len(ignored)-show))
+	}
+	return "not removed: it holds ignored files that git would delete (" + strings.Join(list, ", ") + "); to delete them too, run by hand"
 }
