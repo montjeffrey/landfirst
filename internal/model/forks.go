@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/montjeffrey/landfirst/internal/git"
 )
@@ -276,4 +277,30 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Real > out[j].Real })
 	return out
+}
+
+// SweepStaleObjectStores removes landfirst-objects-* temp directories older
+// than maxAge and reports how many it removed. A probe killed mid-run (Ctrl-C,
+// a crash) never reaches its cleanup and leaves its store behind; a store
+// younger than maxAge may belong to a run still in progress and is left alone.
+func SweepStaleObjectStores(maxAge time.Duration) int {
+	dir := os.TempDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "landfirst-objects-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < maxAge {
+			continue
+		}
+		if os.RemoveAll(filepath.Join(dir, e.Name())) == nil {
+			n++
+		}
+	}
+	return n
 }
