@@ -103,6 +103,11 @@ func (a *App) viewTopology(w, body int) string {
 			}
 			b.WriteString(line + "\n")
 
+			if note := notComparedText(snap, u.Branch); note != "" {
+				b.WriteString("   " + styFaint.Render("│   ") +
+					lipgloss.NewStyle().Foreground(cWarn).Render("? "+note) + "\n")
+			}
+
 			// Strongest contention for this branch, inline underneath.
 			if ps := peers[u.Branch]; len(ps) > 0 {
 				top := ps[0]

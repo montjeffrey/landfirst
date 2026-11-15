@@ -60,6 +60,9 @@ func PlainReport(s *protocol.Snapshot) string {
 			wt = fmt.Sprintf(" [%d worktree(s)]", n)
 		}
 		fmt.Fprintf(&b, "   %s %s%s\n", pad(name, 52), Sanitize(u.Detail), wt)
+		if note := notComparedText(s, u.Branch); note != "" && u.Branch != "" {
+			fmt.Fprintf(&b, "      ? %s\n", note)
+		}
 		// u.Suggested is not populated by the engine today - decision trees
 		// are built per unit on demand via Decide, not attached eagerly to
 		// every unit in a Snapshot (see internal/engine/engine.go's
@@ -90,6 +93,25 @@ func PlainReport(s *protocol.Snapshot) string {
 		}
 	}
 	return b.String()
+}
+
+// notComparedText is the per-branch marker: empty when the branch was compared
+// with everything it should have been, otherwise a plain statement of what was
+// not. A branch with no marker was compared and is clean of collisions only if
+// the conflict count says so; one with a marker has no such claim to make.
+func notComparedText(s *protocol.Snapshot, branch string) string {
+	for _, p := range s.Plan {
+		if p.Branch != branch {
+			continue
+		}
+		switch {
+		case p.Unreadable:
+			return "git could not read its changes - not compared with any branch"
+		case p.NotCompared > 0:
+			return fmt.Sprintf("not compared with %d other branch(es)", p.NotCompared)
+		}
+	}
+	return ""
 }
 
 // unassessed counts units git could not compare with the base. The all-clear
