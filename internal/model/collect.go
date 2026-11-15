@@ -195,9 +195,12 @@ func dirtyState(path string) DirtyState { return dirtyStateWith(git.Try, path) }
 // and counts timeouts.
 type tryFunc func(dir string, args ...string) string
 
+// --untracked-files=all is explicit because status.showUntrackedFiles=no in the
+// user's config would otherwise hide every untracked file, and a worktree holding
+// only those would read as clean.
 func dirtyStateWith(try tryFunc, path string) DirtyState {
 	var d DirtyState
-	fields := strings.Split(try(path, "status", "--porcelain=v2", "-z"), "\x00")
+	fields := strings.Split(try(path, "status", "--porcelain=v2", "--untracked-files=all", "-z"), "\x00")
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
 		if len(f) < 2 {
