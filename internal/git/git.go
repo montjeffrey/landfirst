@@ -46,7 +46,25 @@ func ResetSpawnCount() { spawnCount.Store(0) }
 // commands (status above all) from refreshing and rewriting .git/index under
 // index.lock: landfirst inspects repositories other tools are committing to,
 // and must never be the reason one of their writes fails or the index changes.
-var baseEnv = []string{"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0"}
+//
+// LC_ALL=C pins git's messages to English: open.go and the push/ref error
+// handling recognise git's own wording, which a translated git would defeat.
+// LANGUAGE outranks LC_ALL for message catalogs under GNU gettext, so it is
+// removed from the inherited environment (see gitEnv).
+var baseEnv = []string{"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
+
+// gitEnv is the environment for one git process: the inherited one without
+// LANGUAGE, then baseEnv, then extra (later entries win).
+func gitEnv(extra []string) []string {
+	env := make([]string, 0, len(os.Environ())+len(baseEnv)+len(extra))
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(strings.ToUpper(kv), "LANGUAGE=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(append(env, baseEnv...), extra...)
+}
 
 // DefaultTimeout bounds any git call whose context carries no deadline of its
 // own, so one wedged process (a credential helper, a dead network mount, a
@@ -76,7 +94,7 @@ func RunCtx(ctx context.Context, dir string, extraEnv []string, args ...string) 
 	}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(append(os.Environ(), baseEnv...), extraEnv...)
+	cmd.Env = gitEnv(extraEnv)
 	cmd.WaitDelay = killGrace
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
