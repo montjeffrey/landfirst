@@ -35,3 +35,28 @@ func TestStatusLineWarnsWhenMaxPairsTruncated(t *testing.T) {
 		t.Fatalf("no truncation, no note: got %q", got)
 	}
 }
+
+func TestEveryBranchThatWasNotComparedCarriesAMarker(t *testing.T) {
+	snap := &protocol.Snapshot{
+		Repo:  protocol.RepoInfo{Name: "r", Base: "main", ConflictMode: "full"},
+		Units: []protocol.Unit{{Branch: "b1", Verdict: "unpushed"}, {Branch: "b2", Verdict: "unpushed"}, {Branch: "b3", Verdict: "unpushed"}},
+		Plan: []protocol.PlanItem{
+			{Order: 1, Branch: "b1", Conflicts: 0, NotCompared: 2},
+			{Order: 2, Branch: "b2", Conflicts: 0},
+			{Order: 3, Branch: "b3", Conflicts: 0, NotCompared: 2, Unreadable: true},
+		},
+	}
+	if got := notComparedText(snap, "b1"); !strings.Contains(got, "not compared with 2") {
+		t.Fatalf("b1 marker = %q", got)
+	}
+	if got := notComparedText(snap, "b2"); got != "" {
+		t.Fatalf("b2 was compared with everything, marker = %q", got)
+	}
+	if got := notComparedText(snap, "b3"); !strings.Contains(got, "could not read") {
+		t.Fatalf("b3 marker = %q", got)
+	}
+	out := PlainReport(snap)
+	if strings.Count(out, "      ? ") != 2 {
+		t.Fatalf("want a marker line under b1 and b3 in the branch list:\n%s", out)
+	}
+}
