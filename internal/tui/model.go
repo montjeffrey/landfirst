@@ -439,6 +439,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// mid-op). Not a failure: show the command for the operator to
 			// run by hand.
 			a.status = msg.label + " — needs a manual decision — do it by hand: git " + strings.Join(r.Argv, " ")
+			if r.Note != "" {
+				a.status = msg.label + " — " + r.Note + ": git " + strings.Join(r.Argv, " ")
+			}
 			return a, nil
 		case r.ExitCode != 0:
 			a.status = "failed: git " + strings.Join(r.Argv, " ") + ": " + strings.TrimSpace(r.Stderr)

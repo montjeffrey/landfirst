@@ -248,6 +248,8 @@ type ExecuteResult struct {
 	Stdout   string   `json:"stdout"`
 	Stderr   string   `json:"stderr"`
 	Revision string   `json:"revision"` // post-action
+	// Note explains a result that was not executed, in a sentence a person can read.
+	Note string `json:"note,omitempty"`
 }
 
 // ---- worktrees ----
