@@ -27,7 +27,11 @@ func changedFiles(r *git.Repo, branch string) map[string]bool {
 // collision. Comparing every candidate pair here too, cross-fork included,
 // would just re-measure the era drift Contention's doc comment describes and
 // duplicate work buildContentions already did more precisely.
-func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool) []PlanItem {
+//
+// A branch is only ever compared with branches from its own fork point, and
+// only up to the -max-pairs cap. Every other candidate is counted in
+// NotCompared so that a 0 in Conflicts is never mistaken for "checked, clean".
+func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Contention, skipped [][2]string, probed bool) []PlanItem {
 	type cand struct {
 		u     Unit
 		files map[string]bool
@@ -47,6 +51,29 @@ func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool)
 		cands = append(cands, cand{u, changedFiles(r, u.Branch)})
 	}
 
+	forkOf := map[string]string{}
+	for _, fp := range forks {
+		for _, b := range fp.Branches {
+			forkOf[b] = fp.SHA
+		}
+	}
+	notCompared := map[string]int{}
+	if probed {
+		for i := range cands {
+			for j := i + 1; j < len(cands); j++ {
+				a, b := cands[i].u.Branch, cands[j].u.Branch
+				if fa, fb := forkOf[a], forkOf[b]; fa == "" || fb == "" || fa != fb {
+					notCompared[a]++
+					notCompared[b]++
+				}
+			}
+		}
+		for _, p := range skipped {
+			notCompared[p[0]]++
+			notCompared[p[1]]++
+		}
+	}
+
 	collideCount := map[string]int{}
 	for _, c := range contentions {
 		collideCount[c.A]++
@@ -59,7 +86,9 @@ func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool)
 		conf := -1
 		if probed {
 			conf = collideCount[c.u.Branch]
-			if conf == 0 {
+			if conf == 0 && notCompared[c.u.Branch] > 0 {
+				why = append(why, "collides with nothing it was compared with")
+			} else if conf == 0 {
 				why = append(why, "collides with nothing")
 			} else {
 				why = append(why, strconv.Itoa(conf)+" colliding branch(es)")
@@ -69,13 +98,16 @@ func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool)
 		if behind > 0 {
 			why = append(why, strconv.Itoa(behind)+" behind "+r.Base)
 		}
+		if n := notCompared[c.u.Branch]; n > 0 {
+			why = append(why, "not compared with "+strconv.Itoa(n)+" other branch(es)")
+		}
 		why = append(why, strconv.Itoa(len(c.files))+" file(s) changed")
 		if n := len(c.u.Worktrees); n > 0 {
 			why = append(why, "checked out in "+strconv.Itoa(n)+" worktree(s)")
 		}
 		items = append(items, PlanItem{
 			Branch: c.u.Branch, Ahead: c.u.Unlanded, BehindN: behind,
-			Conflicts: conf, Why: why,
+			Conflicts: conf, NotCompared: notCompared[c.u.Branch], Why: why,
 		})
 	}
 

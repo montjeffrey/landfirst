@@ -163,6 +163,11 @@ type PlanItem struct {
 	BehindN   int      `json:"behind"`
 	Conflicts int      `json:"conflicts"` // -1 means not probed
 	Why       []string `json:"why"`
+
+	// NotCompared counts the other branches in the plan this one was never
+	// compared with (a different fork point, or past the -max-pairs cap), so
+	// Conflicts counts only the compared ones.
+	NotCompared int `json:"notCompared,omitempty"`
 }
 
 // Freshness is how stale this repo's view of the remote is. FetchHeadAt alone
@@ -189,4 +194,9 @@ type Model struct {
 	StrandedCommits int          `json:"strandedCommits"`
 	AtRisk          int          `json:"atRisk"`
 	BuildMillis     int64        `json:"buildMillis"`
+
+	// PairsSkipped is how many overlapping same-fork pairs were left unprobed
+	// because MaxPairs was reached; 0 when the cap did not bite.
+	PairsSkipped int `json:"pairsSkipped,omitempty"`
+	MaxPairs     int `json:"maxPairs,omitempty"`
 }

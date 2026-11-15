@@ -77,7 +77,13 @@ func PlainReport(s *protocol.Snapshot) string {
 			if p.Conflicts >= 0 {
 				conf = fmt.Sprintf("%d conflicting branch(es)", p.Conflicts)
 			}
+			if p.NotCompared > 0 {
+				conf += fmt.Sprintf(" · not compared with %d other branch(es)", p.NotCompared)
+			}
 			fmt.Fprintf(&b, "  %2d %s %s\n", p.Order, pad(p.Branch, 46), conf)
+		}
+		if n := truncationNote(s.Summary); n != "" {
+			b.WriteString("  " + n + "\n")
 		}
 	}
 	return b.String()
@@ -98,4 +104,14 @@ func unassessed(s *protocol.Snapshot) int {
 
 func unassessedNote(n int) string {
 	return fmt.Sprintf("%d branch(es) could not be compared with the base and are not known to be safe", n)
+}
+
+// truncationNote says when -max-pairs cut the conflict comparison short, so a
+// branch that was never compared is not mistaken for one that was compared and
+// found clean. Empty when the cap did not bite.
+func truncationNote(s protocol.Summary) string {
+	if s.PairsSkipped == 0 {
+		return ""
+	}
+	return fmt.Sprintf("-max-pairs %d reached: %d pair(s) of overlapping branches were not compared", s.MaxPairs, s.PairsSkipped)
 }
