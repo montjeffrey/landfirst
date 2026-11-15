@@ -25,6 +25,15 @@ j/k move   1/2/tab panel   p decide   w/W worktree +/-   r refresh   q quit
 Download a binary from [releases](https://github.com/montjeffrey/landfirst/releases)
 and put it on your `PATH`. One static file, no runtime.
 
+Each release also carries `SHA256SUMS` and a build-provenance attestation. To
+check a download (`sha256sum -c` needs the binary and `SHA256SUMS` in one
+folder):
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify landfirst-linux-amd64 --repo montjeffrey/landfirst
+```
+
 ```bash
 go install github.com/montjeffrey/landfirst/cmd/landfirst@latest   # if you have Go
 ```
