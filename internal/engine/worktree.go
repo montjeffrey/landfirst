@@ -181,11 +181,7 @@ func (w *worktreeService) Add(ctx context.Context, req protocol.WorktreeAddReque
 	}
 
 	// A client's next read must see the new worktree.
-	newSnap, err := e.Snapshot(ctx, SnapshotOptions{Stage: protocol.StageFull})
-	if err != nil {
-		return nil, err
-	}
-	result.Revision = newSnap.Revision
+	e.refreshInto(ctx, result)
 	return result, nil
 }
 
@@ -275,11 +271,7 @@ func (w *worktreeService) runAndSnapshot(ctx context.Context, argv []string) (*p
 		}
 		return result, nil
 	}
-	snap, err := e.Snapshot(ctx, SnapshotOptions{Stage: protocol.StageFull})
-	if err != nil {
-		return nil, err
-	}
-	result.Revision = snap.Revision
+	e.refreshInto(ctx, result)
 	return result, nil
 }
 

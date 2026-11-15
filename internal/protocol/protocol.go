@@ -259,6 +259,10 @@ type ExecuteResult struct {
 	Revision string   `json:"revision"` // post-action
 	// Note explains a result that was not executed, in a sentence a person can read.
 	Note string `json:"note,omitempty"`
+	// RefreshError is set when the action itself ran (see Ran, ExitCode) but the
+	// snapshot taken afterwards failed. The action's outcome is still valid;
+	// Revision is then the last one that was published, not a post-action one.
+	RefreshError string `json:"refreshError,omitempty"`
 }
 
 // ---- worktrees ----
