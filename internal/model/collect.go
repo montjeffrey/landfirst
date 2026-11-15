@@ -23,6 +23,7 @@ var (
 
 type rawBranch struct {
 	Name, Head, Upstream string
+	UpstreamRef          string // full %(upstream): unambiguous where the short form is not
 	Gone                 bool
 	Ahead, Behind        int
 	Date                 time.Time
@@ -44,7 +45,7 @@ func collectBranchesErr(r *git.Repo) ([]rawBranch, error) {
 	format := strings.Join([]string{
 		"%(refname)", "%(objectname)", "%(upstream:short)",
 		"%(upstream:track,nobracket)", "%(committerdate:iso-strict)",
-		"%(authorname)", "%(contents:subject)",
+		"%(authorname)", "%(contents:subject)", "%(upstream)",
 	}, us)
 
 	raw, err := r.Run("for-each-ref", "--format="+format, "refs/heads")
@@ -61,6 +62,9 @@ func collectBranchesErr(r *git.Repo) ([]rawBranch, error) {
 			continue
 		}
 		b := rawBranch{Name: strings.TrimPrefix(f[0], "refs/heads/"), Head: f[1], Upstream: f[2], Author: f[5], Subject: f[6]}
+		if len(f) > 7 {
+			b.UpstreamRef = f[7]
+		}
 		b.Gone = strings.Contains(f[3], "gone")
 		if m := reAhead.FindStringSubmatch(f[3]); m != nil {
 			b.Ahead, _ = strconv.Atoi(m[1])

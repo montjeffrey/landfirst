@@ -82,23 +82,24 @@ type CommitMeta struct {
 // is stable across snapshots so a client can track "the same unit" through a
 // revision change - "branch:<name>" or "detached:<sha>".
 type Unit struct {
-	ID         string     `json:"id"`
-	Branch     string     `json:"branch,omitempty"`
-	Head       string     `json:"head"`
-	HeadFull   string     `json:"headFull,omitempty"` // the whole commit id Head abbreviates
-	Upstream   string     `json:"upstream,omitempty"`
-	Ahead      int        `json:"ahead"`
-	Behind     int        `json:"behind"`
-	Unlanded   int        `json:"unlanded"`
-	Equivalent int        `json:"equivalent"`
-	Verdict    string     `json:"verdict"`
-	Stale      bool       `json:"stale"`
-	Detail     string     `json:"detail"`
-	ForkSHA    string     `json:"forkSha,omitempty"`
-	Worktrees  []string   `json:"worktrees"` // worktree IDs, see Worktree.ID
-	Risks      []Risk     `json:"risks"`
-	Suggested  *Action    `json:"suggested,omitempty"` // the engine's own pick from this unit's DecisionTree
-	Tip        CommitMeta `json:"tip"`
+	ID          string     `json:"id"`
+	Branch      string     `json:"branch,omitempty"`
+	Head        string     `json:"head"`
+	HeadFull    string     `json:"headFull,omitempty"` // the whole commit id Head abbreviates
+	Upstream    string     `json:"upstream,omitempty"`
+	UpstreamRef string     `json:"upstreamRef,omitempty"`
+	Ahead       int        `json:"ahead"`
+	Behind      int        `json:"behind"`
+	Unlanded    int        `json:"unlanded"`
+	Equivalent  int        `json:"equivalent"`
+	Verdict     string     `json:"verdict"`
+	Stale       bool       `json:"stale"`
+	Detail      string     `json:"detail"`
+	ForkSHA     string     `json:"forkSha,omitempty"`
+	Worktrees   []string   `json:"worktrees"` // worktree IDs, see Worktree.ID
+	Risks       []Risk     `json:"risks"`
+	Suggested   *Action    `json:"suggested,omitempty"` // the engine's own pick from this unit's DecisionTree
+	Tip         CommitMeta `json:"tip"`
 }
 
 type Worktree struct {

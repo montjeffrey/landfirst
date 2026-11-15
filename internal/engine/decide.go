@@ -319,17 +319,23 @@ func (dc *decideCtx) detached() (protocol.DecisionNode, string) {
 func (dc *decideCtx) diverged() (protocol.DecisionNode, string) {
 	repo := dc.snap.Repo
 	upstream, branch, base := dc.unit.Upstream, dc.unit.Branch, repo.Base
+	// What git is given is the full ref: a tag named like the short form would
+	// otherwise win the name lookup and merge the wrong thing.
+	upstreamArg := dc.unit.UpstreamRef
+	if upstreamArg == "" {
+		upstreamArg = upstream
+	}
 
 	wt, wtOK := dc.unitWorktree()
 	main, mainOK := dc.mainWorktree()
 
 	// Rewrites local history - never auto-run, printed only.
 	rebaseUpstream := dc.act("rebase-onto-upstream", "rebase onto "+upstream,
-		[]string{"rebase", upstream}, "", protocol.ClassManual)
+		[]string{"rebase", upstreamArg}, "", protocol.ClassManual)
 	dc.attachWorktree(rebaseUpstream, wt, wtOK)
 
 	mergeUpstream := dc.act("merge-upstream", "merge "+upstream+" in",
-		[]string{"merge", "--no-edit", "--", upstream}, "", protocol.ClassGuarded)
+		[]string{"merge", "--no-edit", "--", upstreamArg}, "", protocol.ClassGuarded)
 	dc.attachWorktree(mergeUpstream, wt, wtOK)
 
 	// Rewrites local history - never auto-run, printed only.
