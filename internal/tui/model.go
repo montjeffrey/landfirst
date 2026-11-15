@@ -454,6 +454,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		default:
 			a.status = msg.label + " — done"
+			if r.RefreshError != "" {
+				a.status += " (the refresh afterwards failed: " + Sanitize(r.RefreshError) + ")"
+			}
 			a.loading = true
 			return a, a.refresh(true)
 		}

@@ -114,12 +114,26 @@ func (e *engine) Execute(ctx context.Context, req protocol.ExecuteRequest) (*pro
 	// InProgress) the caller needs reflected. This is also what keeps
 	// e.snap current for the next Execute's revision check, instead of
 	// silently serving pre-action data.
-	newSnap, err := e.Snapshot(ctx, SnapshotOptions{Stage: protocol.StageFull})
-	if err != nil {
-		return nil, err
-	}
-	result.Revision = newSnap.Revision
+	e.refreshInto(ctx, result)
 	return result, nil
+}
+
+// refreshInto re-snapshots after an action that already ran and records the new
+// revision on result. A failed refresh must not turn a push or delete that
+// happened into an error return: the outcome is reported as it is and the
+// refresh failure travels beside it.
+func (e *engine) refreshInto(ctx context.Context, result *protocol.ExecuteResult) {
+	newSnap, err := e.Snapshot(ctx, SnapshotOptions{Stage: protocol.StageFull})
+	if err == nil {
+		result.Revision = newSnap.Revision
+		return
+	}
+	result.RefreshError = err.Error()
+	e.mu.RLock()
+	if e.snap != nil {
+		result.Revision = e.snap.Revision
+	}
+	e.mu.RUnlock()
 }
 
 // ownerUnit recovers the unit ID an action ID was minted from. Action IDs
