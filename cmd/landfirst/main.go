@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -42,7 +41,7 @@ func main() {
 	cwd, _ := os.Getwd()
 	eng, err := engine.Open(cwd)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "landfirst:", err)
+		fmt.Fprintln(os.Stderr, "landfirst:", tui.Sanitize(err.Error()))
 		// A resolvable-base/remote failure means "fix the repo", not "landfirst
 		// crashed" - distinguish it from other Open errors (e.g. not a git repo).
 		// engine.Open passes git.Open's error through unwrapped, so the same
@@ -69,9 +68,12 @@ func main() {
 			os.Exit(1)
 		}
 		if *asJSON {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			_ = enc.Encode(snap)
+			out, err := tui.EncodeJSON(snap)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "landfirst:", tui.Sanitize(err.Error()))
+				os.Exit(1)
+			}
+			os.Stdout.Write(out)
 			return
 		}
 		fmt.Print(tui.PlainReport(snap))

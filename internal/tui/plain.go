@@ -31,7 +31,7 @@ var verdictLabel = map[string]struct{ Label, Blurb string }{
 func PlainReport(s *protocol.Snapshot) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  base %s  ·  %d units  ·  %d worktrees  ·  git %s (%s)\n",
-		s.Repo.Name, s.Repo.Base, len(s.Units), len(s.Worktrees), s.Repo.GitVersion, s.Repo.ConflictMode)
+		Sanitize(s.Repo.Name), Sanitize(s.Repo.Base), len(s.Units), len(s.Worktrees), Sanitize(s.Repo.GitVersion), Sanitize(s.Repo.ConflictMode))
 	if s.Summary.AtRisk > 0 {
 		fmt.Fprintf(&b, "  %d change(s) across %d branch(es) exist only on this machine\n", s.Summary.StrandedCommits, s.Summary.AtRisk)
 		if n := unassessed(s); n > 0 {
@@ -53,20 +53,20 @@ func PlainReport(s *protocol.Snapshot) string {
 		}
 		name := u.Branch
 		if name == "" {
-			name = "(detached " + u.Head + ")"
+			name = "(detached " + Sanitize(u.Head) + ")"
 		}
 		wt := ""
 		if n := len(u.Worktrees); n > 0 {
 			wt = fmt.Sprintf(" [%d worktree(s)]", n)
 		}
-		fmt.Fprintf(&b, "   %s %s%s\n", pad(name, 52), u.Detail, wt)
+		fmt.Fprintf(&b, "   %s %s%s\n", pad(name, 52), Sanitize(u.Detail), wt)
 		// u.Suggested is not populated by the engine today - decision trees
 		// are built per unit on demand via Decide, not attached eagerly to
 		// every unit in a Snapshot (see internal/engine/engine.go's
 		// toSnapshot). Print it when a future engine does start filling it
 		// in; nothing to show otherwise.
 		if u.Suggested != nil && len(u.Suggested.Argv) > 0 {
-			fmt.Fprintf(&b, "      git %s\n", strings.Join(u.Suggested.Argv, " "))
+			fmt.Fprintf(&b, "      git %s\n", Sanitize(strings.Join(u.Suggested.Argv, " ")))
 		}
 	}
 

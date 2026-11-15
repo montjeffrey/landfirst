@@ -11,6 +11,7 @@ import (
 // pad truncates or pads to an exact display width so columns line up even when
 // a branch name is absurdly long.
 func pad(s string, w int) string {
+	s = Sanitize(s)
 	r := []rune(s)
 	if len(r) > w {
 		if w <= 1 {
@@ -67,8 +68,8 @@ func (a *App) scrollTo(body int) {
 
 func (a *App) header(w int) string {
 	snap := a.snap
-	title := styTitle.Render(snap.Repo.Name)
-	meta := styDim.Render(fmt.Sprintf("  base %s  ·  %d units  ·  %d worktrees", snap.Repo.Base, len(snap.Units), len(snap.Worktrees)))
+	title := styTitle.Render(Sanitize(snap.Repo.Name))
+	meta := styDim.Render(fmt.Sprintf("  base %s  ·  %d units  ·  %d worktrees", Sanitize(snap.Repo.Base), len(snap.Units), len(snap.Worktrees)))
 
 	var banner string
 	if snap.Summary.AtRisk > 0 {
@@ -168,13 +169,13 @@ func (a *App) commitText(c protocol.Commit, width int, selected bool) string {
 	}
 	var refs string
 	for _, r := range c.Refs {
-		label := strings.TrimPrefix(r, "HEAD -> ")
+		label := Sanitize(strings.TrimPrefix(r, "HEAD -> "))
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 		switch {
 		case strings.HasPrefix(r, "HEAD -> "), r == "HEAD":
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true)
 		case strings.HasPrefix(r, "tag: "):
-			label = strings.TrimPrefix(r, "tag: ")
+			label = Sanitize(strings.TrimPrefix(r, "tag: "))
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
 		}
 		refs += style.Render(label) + " "
@@ -185,16 +186,16 @@ func (a *App) commitText(c protocol.Commit, width int, selected bool) string {
 	age := ago(c.Date)
 
 	if selected {
-		plain := fmt.Sprintf("%s %s%s %s", c.Short, stripANSI(refs), pad(c.Subject, subjW), pad(age, ageW))
+		plain := fmt.Sprintf("%s %s%s %s", Sanitize(c.Short), stripANSI(refs), pad(c.Subject, subjW), pad(age, ageW))
 		return lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(pad(plain, width))
 	}
-	return styFaint.Render(c.Short) + " " + refs +
+	return styFaint.Render(Sanitize(c.Short)) + " " + refs +
 		styText.Render(pad(c.Subject, subjW)) + " " + styFaint.Render(pad(age, ageW))
 }
 
 func (a *App) footer(w int) string {
 	if a.confirm != nil {
-		q := "  " + a.confirm.prompt() + "  "
+		q := "  " + Sanitize(a.confirm.prompt()) + "  "
 		return "\n" + lipgloss.NewStyle().Background(lipgloss.Color("58")).Foreground(lipgloss.Color("231")).
 			Bold(true).Render(pad(q+"[y] yes   [any other key] no", w-1))
 	}
@@ -211,7 +212,7 @@ func (a *App) footer(w int) string {
 		styKey.Render("r") + styFaint.Render(" refresh  ") +
 		styKey.Render("q") + styFaint.Render(" quit")
 	return "\n" + styFaint.Render(strings.Repeat("─", w)) + "\n" +
-		help + "\n  " + styFaint.Render(a.status)
+		help + "\n  " + styFaint.Render(Sanitize(a.status))
 }
 
 // treeFooter renders the decision tree in place of the help line: a
@@ -224,14 +225,14 @@ func (a *App) treeFooter(w int) string {
 	}
 	var b strings.Builder
 	b.WriteString(styFaint.Render(strings.Repeat("─", w)) + "\n")
-	b.WriteString("  " + styText.Render(node.Question) + "\n")
+	b.WriteString("  " + styText.Render(Sanitize(node.Question)) + "\n")
 	for i, opt := range node.Options {
 		suggested := ""
 		if leaf := opt.Next.Action; leaf != nil && a.tree.Suggested != "" && leaf.ID == a.tree.Suggested {
 			suggested = styFaint.Render("  (suggested)")
 		}
 		b.WriteString(fmt.Sprintf("  %s %s%s\n",
-			styKey.Render(fmt.Sprintf("[%d]", i+1)), styText.Render(opt.Answer), suggested))
+			styKey.Render(fmt.Sprintf("[%d]", i+1)), styText.Render(Sanitize(opt.Answer)), suggested))
 	}
 	b.WriteString(styFaint.Render("  esc back   q quit"))
 	return b.String()
@@ -248,13 +249,13 @@ func (a *App) leafFooter(w int, action *protocol.Action) string {
 		// just sourced from Action instead of Remedy.
 		msg := "needs a manual decision — do it by hand"
 		if action.Cwd != "" {
-			msg += " in " + action.Cwd
+			msg += " in " + Sanitize(action.Cwd)
 		}
-		msg += ": git " + strings.Join(action.Argv, " ")
+		msg += ": git " + Sanitize(strings.Join(action.Argv, " "))
 		b.WriteString("  " + styText.Render(msg) + "\n")
 	} else {
-		b.WriteString("  " + styText.Render(action.Label) + " — " +
-			lipgloss.NewStyle().Foreground(cWarn).Render("blocked: "+strings.Join(action.Blocked, "; ")) + "\n")
+		b.WriteString("  " + styText.Render(Sanitize(action.Label)) + " — " +
+			lipgloss.NewStyle().Foreground(cWarn).Render("blocked: "+Sanitize(strings.Join(action.Blocked, "; "))) + "\n")
 	}
 	b.WriteString(styFaint.Render("  any key to continue"))
 	return b.String()
