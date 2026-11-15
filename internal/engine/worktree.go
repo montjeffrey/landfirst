@@ -309,18 +309,20 @@ func findWorktree(snap *protocol.Snapshot, id string) *protocol.Worktree {
 	return nil
 }
 
-// ignoredFilesNote lists (a few of) the ignored files git would delete along
+// ignoredFilesNote lists (a few of) the untracked or ignored files git would delete along
 // with the worktree at path, as a sentence for the operator. "" means there are
 // none.
 func (w *worktreeService) ignoredFilesNote(ctx context.Context, path string) string {
-	out, err := git.RunCtx(ctx, path, nil, "status", "--porcelain", "--ignored", "-z")
+	out, err := git.RunCtx(ctx, path, nil, "status", "--porcelain", "--untracked-files=all", "--ignored=matching", "-z")
 	if err != nil {
 		return "not removed: could not check the worktree for ignored files (" + err.Error() + "); remove it by hand if you are sure"
 	}
 	var ignored []string
 	for _, rec := range strings.Split(out, "\x00") {
-		if strings.HasPrefix(rec, "!! ") {
-			ignored = append(ignored, strings.TrimPrefix(rec, "!! "))
+		// "??" matters too: with status.showUntrackedFiles=no git's own check
+		// before "worktree remove" does not see untracked files either.
+		if strings.HasPrefix(rec, "!! ") || strings.HasPrefix(rec, "?? ") {
+			ignored = append(ignored, rec[3:])
 		}
 	}
 	if len(ignored) == 0 {
@@ -331,5 +333,5 @@ func (w *worktreeService) ignoredFilesNote(ctx context.Context, path string) str
 	if len(list) > show {
 		list = append(append([]string{}, list[:show]...), fmt.Sprintf("and %d more", len(ignored)-show))
 	}
-	return "not removed: it holds ignored files that git would delete (" + strings.Join(list, ", ") + "); to delete them too, run by hand"
+	return "not removed: it holds untracked or ignored files that git would delete (" + strings.Join(list, ", ") + "); to delete them too, run by hand"
 }
