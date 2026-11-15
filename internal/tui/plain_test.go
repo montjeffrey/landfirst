@@ -83,3 +83,19 @@ func TestPlainReportPrintsMergeOrder(t *testing.T) {
 		t.Fatalf("expected \"not probed\" for a Conflicts=-1 item (feat/b):\n%s", out)
 	}
 }
+
+// TestUnknownVerdictNeverShowsTheAllClearBanner is M1's reporting half: with an
+// unassessed branch the report must not claim everything has reached the remote.
+func TestUnknownVerdictNeverShowsTheAllClearBanner(t *testing.T) {
+	s := &protocol.Snapshot{
+		Repo:  protocol.RepoInfo{Name: "r", Base: "main"},
+		Units: []protocol.Unit{{Branch: "feat/x", Verdict: "unknown", Detail: "git could not compare it"}},
+	}
+	out := PlainReport(s)
+	if strings.Contains(out, "everything with local work has reached the remote") {
+		t.Fatalf("all-clear banner shown with an unassessed branch:\n%s", out)
+	}
+	if !strings.Contains(out, "not known to be safe") || !strings.Contains(out, "UNKNOWN") {
+		t.Fatalf("report should name the unassessed branch:\n%s", out)
+	}
+}

@@ -12,6 +12,7 @@ const (
 	Orphaned      Verdict = "orphaned"
 	WrongUpstream Verdict = "wrong-upstream"
 	NeverPushed   Verdict = "never-pushed"
+	Unknown       Verdict = "unknown"
 	Diverged      Verdict = "diverged"
 	Unpushed      Verdict = "unpushed"
 	Detached      Verdict = "detached"
@@ -43,13 +44,13 @@ const (
 
 func (v Verdict) Severity() Severity {
 	switch Verdicts[v].Rank {
-	case 0, 1, 2, 3: // InProgress, Orphaned, WrongUpstream, NeverPushed
+	case 0, 1, 2, 3, 4: // InProgress, Orphaned, WrongUpstream, NeverPushed, Unknown
 		return SeverityBad
-	case 4, 5, 6: // Diverged, Unpushed, Detached
+	case 5, 6, 7: // Diverged, Unpushed, Detached
 		return SeverityWarn
-	case 7: // SafeToDelete
+	case 8: // SafeToDelete
 		return SeverityInfo
-	case 8: // Behind
+	case 9: // Behind
 		return SeverityDim
 	default: // Landed
 		return SeverityOK
@@ -65,12 +66,13 @@ var Verdicts = map[Verdict]VerdictInfo{
 	Orphaned:      {1, "orphaned", "remote branch was deleted and the changes are not in the base"},
 	WrongUpstream: {2, "wrong upstream", "tracks another branch, so pushing does not publish this work"},
 	NeverPushed:   {3, "never pushed", "has changes the remote has never seen"},
-	Diverged:      {4, "diverged", "local and remote both moved; needs a rebase or merge"},
-	Unpushed:      {5, "unpushed work", "ahead of its remote"},
-	Detached:      {6, "detached", "worktree is on no branch; commits here are easy to lose"},
-	SafeToDelete:  {7, "safe to delete", "every change is already in the base"},
-	Behind:        {8, "behind", "no local work; just out of date"},
-	Landed:        {9, "landed", "in sync with its remote"},
+	Unknown:       {4, "unknown", "git could not compare this branch with the base, so it is not known to be safe"},
+	Diverged:      {5, "diverged", "local and remote both moved; needs a rebase or merge"},
+	Unpushed:      {6, "unpushed work", "ahead of its remote"},
+	Detached:      {7, "detached", "worktree is on no branch; commits here are easy to lose"},
+	SafeToDelete:  {8, "safe to delete", "every change is already in the base"},
+	Behind:        {9, "behind", "no local work; just out of date"},
+	Landed:        {10, "landed", "in sync with its remote"},
 }
 
 // Risk describes why a worktree's location is untrustworthy.

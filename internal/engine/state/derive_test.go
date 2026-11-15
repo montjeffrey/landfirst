@@ -19,6 +19,16 @@ func TestDerive(t *testing.T) {
 		obs  Observation
 		want Verdict
 	}{
+		{
+			name: "a failed git cherry is Unknown, never SafeToDelete or Landed",
+			obs:  Observation{Op: OpNone, UpstreamConfigured: false, CherryFailed: true},
+			want: Unknown,
+		},
+		{
+			name: "a failed git cherry on a gone upstream is Unknown, not SafeToDelete",
+			obs:  Observation{Op: OpNone, UpstreamGone: true, CherryFailed: true},
+			want: Unknown,
+		},
 		// One case per row, in order.
 		{
 			name: "row 1: an in-progress op is InProgress",

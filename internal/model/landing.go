@@ -26,7 +26,12 @@ func baseRef(r *git.Repo) string {
 	return git.HeadRef(r.Base)
 }
 
-type cherryResult struct{ Unlanded, Equivalent int }
+// Failed is set when git cherry itself failed: the counts are then not facts,
+// and a verdict must never be derived from them as if they were zero.
+type cherryResult struct {
+	Unlanded, Equivalent int
+	Failed               bool
+}
 
 // unlanded counts changes genuinely absent from the base.
 //
@@ -54,8 +59,12 @@ func unlanded(r *git.Repo, ref string, cache map[string]cherryResult, mu *sync.M
 		return v
 	}
 	var res cherryResult
-	for _, l := range git.Lines(r.Root, "cherry", baseRef(r), ref) {
-		switch {
+	out, err := git.Run(r.Root, "cherry", baseRef(r), ref)
+	if err != nil {
+		res.Failed = true
+	}
+	for _, l := range strings.Split(out, "\n") {
+		switch l = strings.TrimSpace(l); {
 		case strings.HasPrefix(l, "+"):
 			res.Unlanded++
 		case strings.HasPrefix(l, "-"):
@@ -115,12 +124,15 @@ func judge(r *git.Repo, b rawBranch, worktrees []Worktree, cache map[string]cher
 		Behind:             b.Behind,
 		Unlanded:           c.Unlanded,
 		Equivalent:         c.Equivalent,
+		CherryFailed:       c.Failed,
 	}))
 
 	var detail string
 	switch v {
 	case InProgress:
 		detail = string(op) + " in progress"
+	case Unknown:
+		detail = "git could not compare it with " + r.Base + " - not known to be safe"
 	case Orphaned:
 		detail = plural(c.Unlanded, "change") + verb(c.Unlanded, " exists", " exist") + " only here"
 		if c.Equivalent > 0 {

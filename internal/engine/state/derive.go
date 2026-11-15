@@ -18,6 +18,7 @@ type Observation struct {
 	Ahead, Behind      int          // vs the tracked upstream; meaningless when UpstreamGone
 	Unlanded           int          // git cherry: '+' lines, genuinely absent from base
 	Equivalent         int          // git cherry: '-' lines, already in base under another hash
+	CherryFailed       bool         // git cherry exited non-zero, so Unlanded and Equivalent are not facts
 }
 
 // InProgressOp and Verdict duplicate internal/model's types of the same
@@ -45,6 +46,7 @@ const (
 	Orphaned      Verdict = "orphaned"
 	WrongUpstream Verdict = "wrong-upstream"
 	NeverPushed   Verdict = "never-pushed"
+	Unknown       Verdict = "unknown"
 	Diverged      Verdict = "diverged"
 	Unpushed      Verdict = "unpushed"
 	SafeToDelete  Verdict = "safe-to-delete"
@@ -56,6 +58,7 @@ const (
 // state model: every branch's fate reduces to exactly one of these rows.
 //
 //  1. Op != OpNone                              -> InProgress   (blocks every action on this unit)
+//     CherryFailed                               -> Unknown      (git could not compare; never read as "nothing unlanded")
 //  2. UpstreamGone && Unlanded > 0               -> Orphaned
 //  3. UpstreamGone                               -> SafeToDelete
 //  4. UpstreamMismatch                           -> WrongUpstream
@@ -70,6 +73,8 @@ func Derive(o Observation) Verdict {
 	switch {
 	case o.Op != OpNone:
 		return InProgress
+	case o.CherryFailed:
+		return Unknown
 	case o.UpstreamGone && o.Unlanded > 0:
 		return Orphaned
 	case o.UpstreamGone:
