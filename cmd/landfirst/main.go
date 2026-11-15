@@ -46,6 +46,18 @@ func resolveVersion(injected string, info *debug.BuildInfo) string {
 	return "(devel)"
 }
 
+// openExitCode is 2 when the answer is "fix the repository or where you ran
+// this" (no repository, no commits, no base, ambiguous remote) and 1 when
+// something went wrong inside landfirst or git.
+func openExitCode(err error) int {
+	for _, target := range []error{git.ErrNotARepo, git.ErrEmptyRepo, git.ErrNoBase, git.ErrNoRemote} {
+		if errors.Is(err, target) {
+			return 2
+		}
+	}
+	return 1
+}
+
 func main() {
 	var (
 		asJSON   = flag.Bool("json", false, "print the model as JSON and exit")
@@ -74,11 +86,7 @@ func main() {
 		// crashed" - distinguish it from other Open errors (e.g. not a git repo).
 		// engine.Open passes git.Open's error through unwrapped, so the same
 		// sentinels still apply here.
-		code := 1
-		if errors.Is(err, git.ErrNoBase) || errors.Is(err, git.ErrNoRemote) {
-			code = 2
-		}
-		os.Exit(code)
+		os.Exit(openExitCode(err))
 	}
 	defer eng.Close()
 	// An earlier run killed mid-probe leaves its temp object store behind.
