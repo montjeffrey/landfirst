@@ -155,6 +155,9 @@ func (e *engine) Snapshot(ctx context.Context, o SnapshotOptions) (*protocol.Sna
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if m.ReadErr != nil {
+		return nil, fmt.Errorf("engine: cannot read the repository's branches: %w", m.ReadErr)
+	}
 	if n := rc.TimedOut(); n > 0 {
 		return nil, fmt.Errorf("engine: %d git call(s) timed out after %s; not showing a partial result", n, git.DefaultTimeout)
 	}
@@ -206,6 +209,9 @@ func (e *engine) Graph(ctx context.Context, o protocol.GraphOptions) (*protocol.
 	m := model.Build(rc, opt)
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if m.ReadErr != nil {
+		return nil, fmt.Errorf("engine: cannot read the repository's branches: %w", m.ReadErr)
 	}
 	if n := rc.TimedOut(); n > 0 {
 		return nil, fmt.Errorf("engine: %d git call(s) timed out after %s; not showing a partial result", n, git.DefaultTimeout)

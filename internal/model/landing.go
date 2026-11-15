@@ -248,7 +248,7 @@ func remedy(r *git.Repo, u *Unit) *Remedy {
 	return rem
 }
 
-func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) []Unit {
+func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) ([]Unit, error) {
 	byBranch := map[string][]Worktree{}
 	for _, w := range trees {
 		if w.Branch != "" {
@@ -258,7 +258,10 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) []
 	// byBranch is fully built above and never written again - concurrent reads
 	// of it from the goroutines below are safe with no lock.
 
-	branches := collectBranches(r)
+	branches, err := collectBranchesErr(r)
+	if err != nil {
+		return nil, err
+	}
 	// Pre-sized and written to units[i] by the goroutine that owns index i,
 	// never append()'d: two detached units (below, still serial) can tie on
 	// every sort key, and append from concurrent goroutines would make
@@ -336,7 +339,7 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) []
 		}
 		return units[i].Branch < units[j].Branch
 	})
-	return units
+	return units, nil
 }
 
 func short(h string) string {

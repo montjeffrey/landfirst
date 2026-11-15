@@ -198,6 +198,11 @@ type Model struct {
 	AtRisk          int          `json:"atRisk"`
 	BuildMillis     int64        `json:"buildMillis"`
 
+	// ReadErr is set when the repository could not be read (the branch list
+	// failed). The rest of the model is then empty and must not be shown as if
+	// the repository had no work in it.
+	ReadErr error `json:"-"`
+
 	// PairsSkipped is how many overlapping same-fork pairs were left unprobed
 	// because MaxPairs was reached; 0 when the cap did not bite.
 	PairsSkipped int `json:"pairsSkipped,omitempty"`

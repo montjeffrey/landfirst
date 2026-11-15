@@ -41,8 +41,15 @@ func Open(dir string) (*Repo, error) {
 	candidate := candidateRemote(r.Root)
 	base, err := resolveBase(r.Root, candidate)
 	if err != nil {
-		if errors.Is(err, ErrNoBase) && len(Lines(r.Root, "for-each-ref", "--count=1", "--format=x", "refs/heads")) == 0 {
-			return nil, ErrEmptyRepo
+		if errors.Is(err, ErrNoBase) {
+			// Empty only if git can say so: a failed listing is not "no branches".
+			out, lerr := Run(r.Root, "for-each-ref", "--count=1", "--format=x", "refs/heads")
+			if lerr != nil {
+				return nil, lerr
+			}
+			if strings.TrimSpace(out) == "" {
+				return nil, ErrEmptyRepo
+			}
 		}
 		return nil, err
 	}
@@ -108,7 +115,11 @@ func resolveRemote(root, base, candidate string) (string, error) {
 	if candidate != "" {
 		return candidate, nil
 	}
-	if len(Lines(root, "remote")) == 0 {
+	remotes, err := Run(root, "remote")
+	if err != nil {
+		return "", err // not knowing the remotes is not "local-only"
+	}
+	if strings.TrimSpace(remotes) == "" {
 		return "", nil // legitimate local-only repo, not an error
 	}
 	return "", ErrNoRemote
