@@ -33,6 +33,15 @@ Needs `git` on the `PATH`. Conflict probing uses `git merge-tree --write-tree`
 (git 2.38+); on older git it falls back to the pre-2.38 form, and any pair it
 cannot probe is reported as **unknown** rather than quietly reported as clean.
 
+**The default branch must be resolvable.** landfirst never guesses which branch
+everything merges into. It takes it from the remote's HEAD, then
+`git config init.defaultBranch`, then a local `main` or `master`, and stops with
+an error if none of those exists. A repository whose trunk is called anything
+else (`trunk`, `develop`) needs `git config init.defaultBranch trunk` first. A
+directory that is not a repository, and a repository with no commits yet, are
+also reported as errors, all with exit status 2; exit status 1 means landfirst
+or git itself failed.
+
 ## Use
 
 ```bash
@@ -41,7 +50,18 @@ landfirst -all       # the entire topology: every branch, every commit
 landfirst -plain     # one-shot text report; pipeable
 landfirst -json      # the whole snapshot, for scripts and agents
 landfirst -no-probe  # skip conflict probing (much faster on big repos)
+landfirst -version   # print the version
 ```
+
+Tuning:
+
+| flag | default | what it does |
+|---|---|---|
+| `-max-pairs N` | 200 | stop probing after N pairs of overlapping branches. Output then says how many pairs were skipped, and the merge order marks the affected branches *not compared* |
+| `-limit N` | 400 | commits drawn in the graph; `-1` draws the whole history |
+| `-branches N` | 10 | branches that get their own graph lane; `-1` gives every branch one |
+| `-density compact|comfortable|spacious` | comfortable | graph spacing; `d` cycles it in the panel |
+| `-all` | off | the whole topology: every branch, every commit |
 
 ## The topology view
 
@@ -70,6 +90,26 @@ Every branch also shows *where its worktree is*, if it has one: the path, a
 mid-flight there. `w` gives the selected branch a worktree at the default
 location; `W` removes one, refusing (and printing the `--force` command
 instead of running it) rather than silently discarding uncommitted work.
+
+### Merge order
+
+`landfirst -plain` and `landfirst -json` end with a **MERGE ORDER** list: a
+suggestion for which branch to merge first. It appears only in those two
+formats, not in the panel. The rule, exactly as implemented:
+
+1. Candidates are branches with work still to land. The base branch is never a
+   candidate, nor are branches that are landed, safe to delete, merely behind,
+   or stuck mid-rebase/merge/cherry-pick.
+2. They are sorted by, in order: fewest colliding branches; then fewest commits
+   the branch is behind the base; then fewest commits not yet in the base.
+   Ties keep the order of the verdict list.
+
+"Colliding" means another branch that forked from the same commit and changed
+at least one of the same files (see below). It is a file-overlap count, not a
+prediction that the merge will conflict. A branch is only compared with branches
+from its own fork point, and only up to `-max-pairs`; every other branch is
+reported as `not compared with N other branch(es)`, so a `0` is never a silent
+"checked, clean". With `-no-probe` the list says `not probed` instead.
 
 ### What "contention" means here
 
@@ -137,6 +177,9 @@ cells and branch colours stay truthful.
 Worktrees are also flagged by *where they live*: `volatile` (a temp directory
 the OS can clear), `cloud` (inside OneDrive/Dropbox, where sync races git), and
 `nested` (inside the main worktree).
+
+These worktree risks are reported only in `-json` output (the `risks` of each
+unit and worktree). Neither `-plain` nor the panel shows them.
 
 ## Why the counts differ from `git log`
 
