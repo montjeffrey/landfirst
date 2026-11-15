@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,7 +21,30 @@ import (
 	"github.com/montjeffrey/landfirst/internal/tui"
 )
 
-var version = "0.2.0-dev"
+// version is injected by the release build (-X main.version=...). Left empty, the
+// module's own build info answers instead; see resolveVersion.
+var version = ""
+
+// resolveVersion names the running build. An injected version wins; otherwise a
+// binary made by `go install module@vX` carries that version in its build info;
+// a build from a checkout reports itself as a development build plus the commit.
+func resolveVersion(injected string, info *debug.BuildInfo) string {
+	if injected != "" {
+		return injected
+	}
+	if info == nil {
+		return "(devel)"
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 12 {
+			return "(devel) " + s.Value[:12]
+		}
+	}
+	return "(devel)"
+}
 
 func main() {
 	var (
@@ -37,7 +61,8 @@ func main() {
 	flag.Parse()
 
 	if *showVer {
-		fmt.Println("landfirst " + version)
+		info, _ := debug.ReadBuildInfo()
+		fmt.Println("landfirst " + resolveVersion(version, info))
 		return
 	}
 
