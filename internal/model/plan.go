@@ -3,6 +3,7 @@ package model
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/montjeffrey/landfirst/internal/git"
 )
@@ -64,15 +65,16 @@ func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool)
 				why = append(why, strconv.Itoa(conf)+" colliding branch(es)")
 			}
 		}
-		if c.u.Behind > 0 {
-			why = append(why, strconv.Itoa(c.u.Behind)+" behind "+r.Base)
+		behind := behindBase(r, c.u.Branch)
+		if behind > 0 {
+			why = append(why, strconv.Itoa(behind)+" behind "+r.Base)
 		}
 		why = append(why, strconv.Itoa(len(c.files))+" file(s) changed")
 		if n := len(c.u.Worktrees); n > 0 {
 			why = append(why, "checked out in "+strconv.Itoa(n)+" worktree(s)")
 		}
 		items = append(items, PlanItem{
-			Branch: c.u.Branch, Ahead: c.u.Unlanded, BehindN: c.u.Behind,
+			Branch: c.u.Branch, Ahead: c.u.Unlanded, BehindN: behind,
 			Conflicts: conf, Why: why,
 		})
 	}
@@ -97,4 +99,16 @@ func buildPlan(r *git.Repo, units []Unit, contentions []Contention, probed bool)
 		items[i].Order = i + 1
 	}
 	return items
+}
+
+// behindBase counts the commits on the base that branch does not have: how far
+// the branch has drifted from where it will merge. Unit.Behind is something
+// else (commits behind the branch's own upstream) and is 0 for a branch with
+// no upstream however stale it is.
+func behindBase(r *git.Repo, branch string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(r.Try("rev-list", "--count", git.HeadRef(branch)+".."+baseRef(r), "--")))
+	if err != nil {
+		return 0
+	}
+	return n
 }
