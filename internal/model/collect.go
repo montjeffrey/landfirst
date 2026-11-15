@@ -34,7 +34,7 @@ type rawBranch struct {
 // this unusably slow on Windows.
 func collectBranches(r *git.Repo) []rawBranch {
 	format := strings.Join([]string{
-		"%(refname:short)", "%(objectname)", "%(upstream:short)",
+		"%(refname)", "%(objectname)", "%(upstream:short)",
 		"%(upstream:track,nobracket)", "%(committerdate:iso-strict)",
 		"%(authorname)", "%(contents:subject)",
 	}, us)
@@ -45,7 +45,7 @@ func collectBranches(r *git.Repo) []rawBranch {
 		if len(f) < 7 {
 			continue
 		}
-		b := rawBranch{Name: f[0], Head: f[1], Upstream: f[2], Author: f[5], Subject: f[6]}
+		b := rawBranch{Name: strings.TrimPrefix(f[0], "refs/heads/"), Head: f[1], Upstream: f[2], Author: f[5], Subject: f[6]}
 		b.Gone = strings.Contains(f[3], "gone")
 		if m := reAhead.FindStringSubmatch(f[3]); m != nil {
 			b.Ahead, _ = strconv.Atoi(m[1])

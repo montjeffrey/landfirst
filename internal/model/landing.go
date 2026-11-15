@@ -14,13 +14,16 @@ import (
 )
 
 // baseRef prefers the remote-tracking base, because "did this land" means
-// "is it on the remote", not "is it in my local copy of main".
+// "is it on the remote", not "is it in my local copy of main". It returns a
+// fully qualified ref so it can never be read as an option.
 func baseRef(r *git.Repo) string {
-	remote := r.Remote + "/" + r.Base
-	if git.Try(r.Root, "rev-parse", "--verify", "--quiet", remote) != "" {
-		return remote
+	if r.Remote != "" {
+		remote := git.RemoteRef(r.Remote, r.Base)
+		if git.Try(r.Root, "rev-parse", "--verify", "--quiet", remote) != "" {
+			return remote
+		}
 	}
-	return r.Base
+	return git.HeadRef(r.Base)
 }
 
 type cherryResult struct{ Unlanded, Equivalent int }
@@ -100,7 +103,7 @@ func judge(r *git.Repo, b rawBranch, worktrees []Worktree, cache map[string]cher
 	}
 	var c cherryResult
 	if op == OpNone && (b.Gone || b.Upstream == "") {
-		c = unlanded(r, b.Name, cache, mu)
+		c = unlanded(r, git.HeadRef(b.Name), cache, mu)
 	}
 
 	v := Verdict(state.Derive(state.Observation{
@@ -128,7 +131,7 @@ func judge(r *git.Repo, b rawBranch, worktrees []Worktree, cache map[string]cher
 	case NeverPushed:
 		detail = plural(c.Unlanded, "change") + " never pushed"
 		if c.Equivalent > 0 {
-			detail += " (" + strconv.Itoa(c.Equivalent) + " of " + strconv.Itoa(rawDistance(r, b.Name)) + " already in " + r.Base + ")"
+			detail += " (" + strconv.Itoa(c.Equivalent) + " of " + strconv.Itoa(rawDistance(r, git.HeadRef(b.Name))) + " already in " + r.Base + ")"
 		}
 	case SafeToDelete:
 		detail = "every change is already in " + r.Base
@@ -187,7 +190,13 @@ func remedy(r *git.Repo, u *Unit) *Remedy {
 			return nil
 		}
 	}
-	push := []string{"push", "-u", r.Remote, u.Branch + ":" + u.Branch}
+	// A branch whose name git could read as an option gets no command at all.
+	// Detached units (Branch == "") never reach the push cases below.
+	if u.Branch != "" && git.OptionLike(u.Branch) {
+		return nil
+	}
+	ref := git.HeadRef(u.Branch)
+	push := []string{"push", "-u", "--", r.Remote, ref + ":" + ref}
 	var rem *Remedy
 	switch u.Verdict {
 	case Orphaned:
@@ -197,12 +206,12 @@ func remedy(r *git.Repo, u *Unit) *Remedy {
 	case NeverPushed:
 		rem = &Remedy{Summary: "publish for the first time", Args: push, Safe: true}
 	case Unpushed:
-		rem = &Remedy{Summary: "push the outstanding commits", Args: []string{"push", r.Remote, u.Branch + ":" + u.Branch}, Safe: true}
+		rem = &Remedy{Summary: "push the outstanding commits", Args: []string{"push", "--", r.Remote, ref + ":" + ref}, Safe: true}
 	case Diverged:
 		// Never Safe: rewrites local history, and an agent may be mid-commit.
-		rem = &Remedy{Summary: "reconcile by hand - both sides moved", Args: []string{"rebase", r.Remote + "/" + u.Branch}, Safe: false}
+		rem = &Remedy{Summary: "reconcile by hand - both sides moved", Args: []string{"rebase", "--", git.RemoteRef(r.Remote, u.Branch)}, Safe: false}
 	case SafeToDelete:
-		rem = &Remedy{Summary: "already in " + r.Base + "; delete the local branch", Args: []string{"branch", "-d", u.Branch}, Safe: true}
+		rem = &Remedy{Summary: "already in " + r.Base + "; delete the local branch", Args: []string{"branch", "-d", "--", u.Branch}, Safe: true}
 	case Detached:
 		// switch -c creates a branch at the worktree's own current HEAD - the
 		// correct fix, but only in the worktree HEAD actually refers to (see
@@ -254,6 +263,9 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) []
 			}
 			for _, w := range u.Worktrees {
 				u.Risks = append(u.Risks, w.Risks...)
+			}
+			if git.OptionLike(b.Name) {
+				u.Risks = append(u.Risks, Risk{"name", "branch name begins with '-' and could be read by git as an option - landfirst offers no command for it"})
 			}
 			u.Remedy = remedy(r, &u)
 			units[i] = u

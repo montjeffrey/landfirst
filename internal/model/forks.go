@@ -71,7 +71,7 @@ func buildForks(r *git.Repo, units []Unit) []ForkPoint {
 		if u.Verdict == Landed || u.Verdict == SafeToDelete {
 			continue
 		}
-		mb := strings.TrimSpace(git.Try(r.Root, "merge-base", baseRef(r), u.Branch))
+		mb := strings.TrimSpace(git.Try(r.Root, "merge-base", baseRef(r), git.HeadRef(u.Branch)))
 		if mb == "" {
 			continue
 		}
@@ -231,7 +231,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 		// Files each branch changed since the shared fork point.
 		changed := make(map[string]map[string]bool, len(fp.Branches))
 		for _, b := range fp.Branches {
-			changed[b] = changedSince(r, fp.SHA, b)
+			changed[b] = changedSince(r, fp.SHA, git.HeadRef(b))
 		}
 		for i := 0; i < len(fp.Branches); i++ {
 			for j := i + 1; j < len(fp.Branches); j++ {
@@ -259,7 +259,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 				}
 				// Anything git reports beyond the genuinely shared set is drift.
 				if canProbe {
-					if cf, unknown := probeMerge(r, mode, a, b, isolatedEnv); !unknown {
+					if cf, unknown := probeMerge(r, mode, git.HeadRef(a), git.HeadRef(b), isolatedEnv); !unknown {
 						inShared := map[string]bool{}
 						for _, f := range shared {
 							inShared[f] = true
