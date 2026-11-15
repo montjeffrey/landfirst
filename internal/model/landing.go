@@ -89,7 +89,9 @@ func upstreamIsWrong(r *git.Repo, b rawBranch) bool {
 	if b.Upstream == "" || b.Gone {
 		return false
 	}
-	return b.Upstream != r.Remote+"/"+b.Name
+	// The full ref, not the short form: a tag named origin/<b> makes git print the
+	// short form as remotes/origin/<b> for a perfectly correct upstream.
+	return b.UpstreamRef != git.RemoteRef(r.Remote, b.Name)
 }
 
 // judge derives a branch's verdict via state.Derive from one already-known
@@ -281,7 +283,7 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) ([
 			wts := byBranch[b.Name]
 			v, detail, un, eq := judge(r, b, wts, cache, &mu)
 			u := Unit{
-				Branch: b.Name, Head: short(b.Head), HeadFull: b.Head, Upstream: b.Upstream,
+				Branch: b.Name, Head: short(b.Head), HeadFull: b.Head, Upstream: b.Upstream, UpstreamRef: b.UpstreamRef,
 				Ahead: b.Ahead, Behind: b.Behind, Unlanded: un, Equivalent: eq,
 				Date: b.Date, Author: b.Author, Subject: b.Subject,
 				Worktrees: wts, Verdict: v, Detail: detail,

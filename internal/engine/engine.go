@@ -274,7 +274,7 @@ func toSnapshot(m *model.Model, stage protocol.Stage) *protocol.Snapshot {
 			wts = append(wts, wtID[w.Path])
 		}
 		units[i] = protocol.Unit{
-			ID: unitID(u), Branch: u.Branch, Head: u.Head, HeadFull: u.HeadFull, Upstream: u.Upstream,
+			ID: unitID(u), Branch: u.Branch, Head: u.Head, HeadFull: u.HeadFull, Upstream: u.Upstream, UpstreamRef: u.UpstreamRef,
 			Ahead: u.Ahead, Behind: u.Behind, Unlanded: u.Unlanded, Equivalent: u.Equivalent,
 			Verdict: string(u.Verdict), Stale: u.Stale, Detail: u.Detail,
 			ForkSHA: forkOf[u.Branch], Worktrees: wts, Risks: toRisks(u.Risks),

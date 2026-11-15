@@ -582,11 +582,11 @@ func TestDecisionTreeDiverged(t *testing.T) {
 	}
 
 	rebaseUp := byKind["rebase-onto-upstream"]
-	if rebaseUp.Class != protocol.ClassManual || !equalArgv(rebaseUp.Argv, []string{"rebase", "origin/feat/diverge"}) {
+	if rebaseUp.Class != protocol.ClassManual || !equalArgv(rebaseUp.Argv, []string{"rebase", "refs/remotes/origin/feat/diverge"}) {
 		t.Fatalf("rebase-onto-upstream = %+v", rebaseUp)
 	}
 	mergeUp := byKind["merge-upstream"]
-	if mergeUp.Class != protocol.ClassGuarded || !equalArgv(mergeUp.Argv, []string{"merge", "--no-edit", "--", "origin/feat/diverge"}) {
+	if mergeUp.Class != protocol.ClassGuarded || !equalArgv(mergeUp.Argv, []string{"merge", "--no-edit", "--", "refs/remotes/origin/feat/diverge"}) {
 		t.Fatalf("merge-upstream = %+v", mergeUp)
 	}
 	rebaseBase := byKind["rebase-onto-base"]

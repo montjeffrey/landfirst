@@ -136,24 +136,25 @@ type Remedy struct {
 
 // Unit is one piece of in-flight work: a branch, or a detached worktree.
 type Unit struct {
-	Branch     string     `json:"branch"`
-	Head       string     `json:"head"`
-	HeadFull   string     `json:"headFull"` // the whole commit id Head abbreviates
-	Upstream   string     `json:"upstream"`
-	Ahead      int        `json:"ahead"`
-	Behind     int        `json:"behind"`
-	Unlanded   int        `json:"unlanded"`   // patch-id aware: genuinely absent from base
-	Equivalent int        `json:"equivalent"` // already in base under another hash
-	Date       time.Time  `json:"date"`
-	Author     string     `json:"author"`
-	Subject    string     `json:"subject"`
-	Worktrees  []Worktree `json:"worktrees"`
-	Risks      []Risk     `json:"risks"`
-	Verdict    Verdict    `json:"verdict"`
-	Detail     string     `json:"detail"`
-	Stale      bool       `json:"stale"` // computed in build.go, against Freshness
-	Remedy     *Remedy    `json:"remedy,omitempty"`
-	Files      []string   `json:"-"`
+	Branch      string     `json:"branch"`
+	Head        string     `json:"head"`
+	HeadFull    string     `json:"headFull"` // the whole commit id Head abbreviates
+	Upstream    string     `json:"upstream"`
+	UpstreamRef string     `json:"upstreamRef,omitempty"` // full refname; what a merge or rebase is given
+	Ahead       int        `json:"ahead"`
+	Behind      int        `json:"behind"`
+	Unlanded    int        `json:"unlanded"`   // patch-id aware: genuinely absent from base
+	Equivalent  int        `json:"equivalent"` // already in base under another hash
+	Date        time.Time  `json:"date"`
+	Author      string     `json:"author"`
+	Subject     string     `json:"subject"`
+	Worktrees   []Worktree `json:"worktrees"`
+	Risks       []Risk     `json:"risks"`
+	Verdict     Verdict    `json:"verdict"`
+	Detail      string     `json:"detail"`
+	Stale       bool       `json:"stale"` // computed in build.go, against Freshness
+	Remedy      *Remedy    `json:"remedy,omitempty"`
+	Files       []string   `json:"-"`
 }
 
 // PlanItem is a branch's position in the merge order.
