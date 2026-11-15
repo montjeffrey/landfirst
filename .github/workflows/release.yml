@@ -5,25 +5,32 @@ name: release
 # provenance attestation proving each binary came from this repository and
 # this workflow. Verify a download with:
 #   gh attestation verify landfirst-linux-amd64 --repo montjeffrey/landfirst
+#
+# Two jobs, so the one that runs the project's code holds no write access:
+# `build` checks out, tests and compiles with a read-only token and passes the
+# binaries on as an artifact; only `publish` - which runs no project code, only
+# the pinned attest action and `gh` - gets contents/id-token/attestations write.
 
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write      # create the release
-  id-token: write      # sign the provenance attestation
-  attestations: write  # store it
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.27.3'
-          cache: true
+          # No shared build cache: a release is built from the tagged commit
+          # alone, never from something an earlier workflow run left behind.
+          cache: false
 
       # Never ship what has not passed: the tagged commit is tested again here.
       - name: test the tagged commit
@@ -57,14 +64,35 @@ jobs:
       - name: checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release
+      id-token: write      # sign the provenance attestation
+      attestations: write  # store it
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist
+
       - name: attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: "dist/landfirst-*"
 
+      # No checkout here, so gh needs the repository named explicitly.
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "${GITHUB_REF_NAME}" \
