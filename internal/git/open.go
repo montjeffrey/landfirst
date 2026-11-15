@@ -14,6 +14,14 @@ var ErrNoBase = errors.New("no resolvable base branch - set init.defaultBranch o
 // no branch.<base>.remote to settle it.
 var ErrNoRemote = errors.New("ambiguous remote - set branch.<base>.remote or remote.pushDefault")
 
+// ErrNotARepo means the directory landfirst was started in is not inside a git
+// repository.
+var ErrNotARepo = errors.New("not inside a git repository - run landfirst from a repository's working tree")
+
+// ErrEmptyRepo means the repository has no branches yet, so there is nothing
+// to compare.
+var ErrEmptyRepo = errors.New("this repository has no commits yet - make a first commit and run landfirst again")
+
 // Open locates the repository containing dir and picks an integration
 // branch and remote - resolved, never guessed. A candidate remote comes
 // first (pushDefault, or a sole remote); the base comes from that remote's
@@ -22,6 +30,10 @@ var ErrNoRemote = errors.New("ambiguous remote - set branch.<base>.remote or rem
 func Open(dir string) (*Repo, error) {
 	root, err := Run(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
+		var ge *Error
+		if errors.As(err, &ge) && strings.Contains(ge.Stderr, "not a git repository") {
+			return nil, ErrNotARepo
+		}
 		return nil, err
 	}
 	r := &Repo{Root: strings.TrimSpace(root)}
@@ -29,6 +41,9 @@ func Open(dir string) (*Repo, error) {
 	candidate := candidateRemote(r.Root)
 	base, err := resolveBase(r.Root, candidate)
 	if err != nil {
+		if errors.Is(err, ErrNoBase) && len(Lines(r.Root, "for-each-ref", "--count=1", "--format=x", "refs/heads")) == 0 {
+			return nil, ErrEmptyRepo
+		}
 		return nil, err
 	}
 	r.Base = base
