@@ -33,6 +33,12 @@ func SpawnCount() int64 { return spawnCount.Load() }
 // test cases.
 func ResetSpawnCount() { spawnCount.Store(0) }
 
+// baseEnv is added to every git process. GIT_OPTIONAL_LOCKS=0 stops read-only
+// commands (status above all) from refreshing and rewriting .git/index under
+// index.lock: landfirst inspects repositories other tools are committing to,
+// and must never be the reason one of their writes fails or the index changes.
+var baseEnv = []string{"GIT_OPTIONAL_LOCKS=0"}
+
 // RunCtx is the actual executor; Run delegates to it with a background
 // context and no extra env. extraEnv lets a later stage isolate the object
 // store (GIT_OBJECT_DIRECTORY etc.) during merge-tree probes without
@@ -44,9 +50,7 @@ func RunCtx(ctx context.Context, dir string, extraEnv []string, args ...string) 
 	}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	if extraEnv != nil {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
+	cmd.Env = append(append(os.Environ(), baseEnv...), extraEnv...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
