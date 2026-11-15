@@ -19,7 +19,7 @@ import (
 func baseRef(r *git.Repo) string {
 	if r.Remote != "" {
 		remote := git.RemoteRef(r.Remote, r.Base)
-		if git.Try(r.Root, "rev-parse", "--verify", "--quiet", remote) != "" {
+		if r.Try("rev-parse", "--verify", "--quiet", remote) != "" {
 			return remote
 		}
 	}
@@ -59,7 +59,7 @@ func unlanded(r *git.Repo, ref string, cache map[string]cherryResult, mu *sync.M
 		return v
 	}
 	var res cherryResult
-	out, err := git.Run(r.Root, "cherry", baseRef(r), ref)
+	out, err := r.Run("cherry", baseRef(r), ref)
 	if err != nil {
 		res.Failed = true
 	}
@@ -78,7 +78,7 @@ func unlanded(r *git.Repo, ref string, cache map[string]cherryResult, mu *sync.M
 }
 
 func rawDistance(r *git.Repo, ref string) int {
-	n, _ := strconv.Atoi(strings.TrimSpace(git.Try(r.Root, "rev-list", "--count", baseRef(r)+".."+ref)))
+	n, _ := strconv.Atoi(strings.TrimSpace(r.Try("rev-list", "--count", baseRef(r)+".."+ref)))
 	return n
 }
 
@@ -300,15 +300,15 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) []
 			continue
 		}
 		c := unlanded(r, w.Head, cache, &mu)
-		date, _ := time.Parse(time.RFC3339, strings.TrimSpace(git.Try(r.Root, "log", "-1", "--format=%cI", w.Head)))
+		date, _ := time.Parse(time.RFC3339, strings.TrimSpace(r.Try("log", "-1", "--format=%cI", w.Head)))
 		v, detail := Detached, "no branch points here"
 		if w.Op != OpNone {
 			v, detail = InProgress, string(w.Op)+" in progress"
 		}
 		u := Unit{
 			Head: short(w.Head), Date: date,
-			Author:    strings.TrimSpace(git.Try(r.Root, "log", "-1", "--format=%an", w.Head)),
-			Subject:   strings.TrimSpace(git.Try(r.Root, "log", "-1", "--format=%s", w.Head)),
+			Author:    strings.TrimSpace(r.Try("log", "-1", "--format=%an", w.Head)),
+			Subject:   strings.TrimSpace(r.Try("log", "-1", "--format=%s", w.Head)),
 			Worktrees: []Worktree{w}, Risks: w.Risks,
 			Verdict: v, Detail: detail, Unlanded: c.Unlanded,
 		}

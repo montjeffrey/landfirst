@@ -11,7 +11,7 @@ import (
 // the same file cannot conflict, so they are never probed.
 func changedFiles(r *git.Repo, branch string) map[string]bool {
 	set := map[string]bool{}
-	for _, f := range git.Lines(r.Root, "diff", "--name-only", baseRef(r)+"..."+git.HeadRef(branch)) {
+	for _, f := range r.Lines("diff", "--name-only", baseRef(r)+"..."+git.HeadRef(branch)) {
 		set[f] = true
 	}
 	return set

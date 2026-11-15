@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // Repo is an opened repository.
@@ -20,6 +21,14 @@ type Repo struct {
 	Base   string
 	Remote string
 	Name   string
+
+	// Ctx, when set, governs every call made through the Repo methods below, so
+	// canceling it kills the git processes of a build the user no longer wants.
+	Ctx context.Context
+	// Timeouts, when set, counts calls that timed out. Try reports failure as
+	// empty output, so without this a build whose git calls timed out would look
+	// like a repository with nothing in it.
+	Timeouts *atomic.Int64
 }
 
 var spawnCount atomic.Int64
@@ -37,7 +46,19 @@ func ResetSpawnCount() { spawnCount.Store(0) }
 // commands (status above all) from refreshing and rewriting .git/index under
 // index.lock: landfirst inspects repositories other tools are committing to,
 // and must never be the reason one of their writes fails or the index changes.
-var baseEnv = []string{"GIT_OPTIONAL_LOCKS=0"}
+var baseEnv = []string{"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0"}
+
+// DefaultTimeout bounds any git call whose context carries no deadline of its
+// own, so one wedged process (a credential helper, a dead network mount, a
+// hook) cannot freeze the panel forever. GIT_TERMINAL_PROMPT=0 above makes git
+// fail instead of asking for a password it can never receive. ssh may still
+// prompt on the controlling terminal; this timeout is what bounds that case.
+var DefaultTimeout = 30 * time.Second
+
+// killGrace is how long Wait may keep waiting for output pipes after a
+// timed-out or canceled git is killed: a grandchild (git-remote-https, a
+// credential helper) can hold them open.
+const killGrace = 2 * time.Second
 
 // RunCtx is the actual executor; Run delegates to it with a background
 // context and no extra env. extraEnv lets a later stage isolate the object
@@ -48,9 +69,15 @@ func RunCtx(ctx context.Context, dir string, extraEnv []string, args ...string) 
 	if os.Getenv("LANDFIRST_TRACE") != "" {
 		fmt.Fprintln(os.Stderr, "git trace:", dir, "git", strings.Join(args, " "))
 	}
+	if _, ok := ctx.Deadline(); !ok && DefaultTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
+	}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(append(os.Environ(), baseEnv...), extraEnv...)
+	cmd.WaitDelay = killGrace
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -61,7 +88,18 @@ func RunCtx(ctx context.Context, dir string, extraEnv []string, args ...string) 
 		if errors.As(err, &ee) {
 			code = ee.ExitCode()
 		}
-		return out.String(), &Error{Args: args, Stderr: strings.TrimSpace(errb.String()), ExitCode: code, Err: err}
+		stderr := strings.TrimSpace(errb.String())
+		if cerr := ctx.Err(); cerr != nil {
+			// The kill is what the caller needs to hear about, not git's
+			// "signal: killed".
+			err = cerr
+			if errors.Is(cerr, context.DeadlineExceeded) {
+				stderr = "timed out"
+			} else {
+				stderr = "canceled"
+			}
+		}
+		return out.String(), &Error{Args: args, Stderr: stderr, ExitCode: code, Err: err}
 	}
 	return out.String(), nil
 }
@@ -118,4 +156,74 @@ func ExitCode(err error) int {
 		return e.ExitCode
 	}
 	return -1
+}
+
+// WithContext returns a copy of r whose git calls use ctx and whose timeouts
+// are counted. The original is untouched, so concurrent builds do not share
+// either.
+func (r *Repo) WithContext(ctx context.Context) *Repo {
+	c := *r
+	c.Ctx = ctx
+	c.Timeouts = new(atomic.Int64)
+	return &c
+}
+
+// TimedOut reports how many calls made through r hit their deadline.
+func (r *Repo) TimedOut() int64 {
+	if r.Timeouts == nil {
+		return 0
+	}
+	return r.Timeouts.Load()
+}
+
+// IsTimeout reports whether err is a git call that was killed at its deadline.
+func IsTimeout(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && errors.Is(e.Err, context.DeadlineExceeded)
+}
+
+func (r *Repo) ctx() context.Context {
+	if r.Ctx != nil {
+		return r.Ctx
+	}
+	return context.Background()
+}
+
+// RunEnv runs git in the repository root with extra environment.
+func (r *Repo) RunEnv(extraEnv []string, args ...string) (string, error) {
+	return r.runIn(r.Root, extraEnv, args)
+}
+
+// Run runs git in the repository root.
+func (r *Repo) Run(args ...string) (string, error) { return r.runIn(r.Root, nil, args) }
+
+func (r *Repo) runIn(dir string, extraEnv []string, args []string) (string, error) {
+	out, err := RunCtx(r.ctx(), dir, extraEnv, args...)
+	if err != nil && r.Timeouts != nil && IsTimeout(err) {
+		r.Timeouts.Add(1)
+	}
+	return out, err
+}
+
+// Try is the package-level Try bound to r's context.
+func (r *Repo) Try(args ...string) string { return r.TryIn(r.Root, args...) }
+
+// TryIn is Try in another directory (a linked worktree).
+func (r *Repo) TryIn(dir string, args ...string) string {
+	out, err := r.runIn(dir, nil, args)
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
+// Lines is the package-level Lines bound to r's context.
+func (r *Repo) Lines(args ...string) []string {
+	var res []string
+	for _, l := range strings.Split(r.Try(args...), "\n") {
+		if s := strings.TrimSpace(l); s != "" {
+			res = append(res, s)
+		}
+	}
+	return res
 }
