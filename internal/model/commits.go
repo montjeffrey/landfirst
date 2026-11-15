@@ -47,7 +47,7 @@ type Graph struct {
 func parseLog(r *git.Repo, args ...string) []Commit {
 	format := strings.Join([]string{"%H", "%P", "%D", "%s", "%an", "%cI"}, "%x00")
 	full := append([]string{"log", "-z", "--no-color", "--date-order", "--format=" + format}, args...)
-	return parseLogRecords(git.Try(r.Root, full...))
+	return parseLogRecords(r.Try(full...))
 }
 
 // topoSort orders children before parents, newest first among what is ready.

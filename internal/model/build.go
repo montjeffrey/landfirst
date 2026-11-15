@@ -23,7 +23,7 @@ type Options struct {
 // not a merge result - reporting those pairs as clean would be confidently
 // wrong, so they are reported as unknown instead.
 func gitCapability(r *git.Repo) (version string, mode string) {
-	raw := strings.TrimSpace(git.Try(r.Root, "--version"))
+	raw := strings.TrimSpace(r.Try("--version"))
 	m := reVer.FindStringSubmatch(raw)
 	if m == nil {
 		return raw, "none"

@@ -52,6 +52,15 @@ type App struct {
 	panX     int // first visible canvas column, for horizontal scrolling
 	w, h     int
 
+	// A refresh asked for while one is still running is remembered, not started:
+	// every "r" press and every change event used to launch its own full build, so
+	// a burst of events (a checkout, a fetch, key repeat) piled up concurrent
+	// builds, each spawning dozens of git processes. inflight counts running
+	// fetches; queued/queuedFull record that one more refresh is owed.
+	inflight   int
+	queued     bool
+	queuedFull bool
+
 	status  string
 	loading bool
 
@@ -192,6 +201,43 @@ func ParseDensity(s string) Density {
 // the manual "r" refresh (see startWatch's own doc).
 func (a *App) Init() tea.Cmd { return tea.Batch(a.rebuild(), a.startWatch()) }
 
+// Per-call bounds for work started from the panel. They derive from watchCtx,
+// so quitting cancels whatever is still running and kills its git processes.
+const (
+	fetchTimeout  = 2 * time.Minute
+	decideTimeout = time.Minute
+	opTimeout     = 5 * time.Minute // a push or worktree add can legitimately be slow
+)
+
+// refresh asks for a Snapshot (and, when full, the Graph too). If a fetch is
+// already running it only records that another is owed - at most one, however
+// many requests arrive - and fetchDone starts it when the running one ends.
+func (a *App) refresh(full bool) tea.Cmd {
+	if a.inflight > 0 {
+		a.queued = true
+		a.queuedFull = a.queuedFull || full
+		return nil
+	}
+	if full {
+		return a.rebuild()
+	}
+	return a.fetchSnapshot()
+}
+
+// fetchDone is called once per finished Snapshot or Graph fetch and starts the
+// one owed refresh when the last running fetch has ended.
+func (a *App) fetchDone() tea.Cmd {
+	if a.inflight > 0 {
+		a.inflight--
+	}
+	if a.inflight > 0 || !a.queued {
+		return nil
+	}
+	full := a.queuedFull
+	a.queued, a.queuedFull = false, false
+	return a.refresh(full)
+}
+
 // rebuild re-fetches Snapshot and Graph concurrently - independent Engine
 // calls, so there is no reason to make one wait on the other.
 func (a *App) rebuild() tea.Cmd {
@@ -224,15 +270,21 @@ func listenForChanges(ch <-chan protocol.ChangeEvent) tea.Cmd {
 }
 
 func (a *App) fetchSnapshot() tea.Cmd {
+	a.inflight++
 	return func() tea.Msg {
-		snap, err := a.eng.Snapshot(context.Background(), a.snapOpt)
+		ctx, cancel := context.WithTimeout(a.watchCtx, fetchTimeout)
+		defer cancel()
+		snap, err := a.eng.Snapshot(ctx, a.snapOpt)
 		return snapshotMsg{snap: snap, err: err}
 	}
 }
 
 func (a *App) fetchGraph() tea.Cmd {
+	a.inflight++
 	return func() tea.Msg {
-		g, err := a.eng.Graph(context.Background(), a.graphOpt)
+		ctx, cancel := context.WithTimeout(a.watchCtx, fetchTimeout)
+		defer cancel()
+		g, err := a.eng.Graph(ctx, a.graphOpt)
 		return graphMsg{graph: g, err: err}
 	}
 }
@@ -293,7 +345,20 @@ func unitWorktree(u *protocol.Unit, snap *protocol.Snapshot) (*protocol.Worktree
 	return nil, false
 }
 
+// Update runs update, then accounts for a finished fetch so a refresh that was
+// requested meanwhile starts.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := a.update(msg)
+	switch msg.(type) {
+	case snapshotMsg, graphMsg:
+		if next := a.fetchDone(); next != nil {
+			cmd = tea.Batch(cmd, next)
+		}
+	}
+	return m, cmd
+}
+
+func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.w, a.h = msg.Width, msg.Height
@@ -381,7 +446,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			a.status = msg.label + " — done"
 			a.loading = true
-			return a, a.rebuild()
+			return a, a.refresh(true)
 		}
 
 	case watchStartedMsg:
@@ -406,10 +471,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// cost far more often than the topology actually needs redrawing.
 		if msg.ev.Stage == protocol.StageFull {
 			a.status = "updated: full"
-			return a, tea.Batch(a.rebuild(), listenForChanges(a.watchCh))
+			return a, tea.Batch(a.refresh(true), listenForChanges(a.watchCh))
 		}
 		a.status = "updated: fast"
-		return a, tea.Batch(a.fetchSnapshot(), listenForChanges(a.watchCh))
+		return a, tea.Batch(a.refresh(false), listenForChanges(a.watchCh))
 
 	case tea.KeyMsg:
 		return a.onKey(msg)
@@ -537,7 +602,7 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		a.loading = true
 		a.status = "refreshing…"
-		return a, a.rebuild()
+		return a, a.refresh(true)
 	case "p", "enter":
 		return a, a.decide()
 	case "w":
@@ -605,7 +670,9 @@ func (a *App) decide() tea.Cmd {
 	a.loading = true
 	a.status = "deciding…"
 	return func() tea.Msg {
-		tree, err := a.eng.Decide(context.Background(), unitID)
+		ctx, cancel := context.WithTimeout(a.watchCtx, decideTimeout)
+		defer cancel()
+		tree, err := a.eng.Decide(ctx, unitID)
 		return treeMsg{tree: tree, err: err}
 	}
 }
@@ -644,7 +711,9 @@ func (a *App) wtRemove() {
 
 func (a *App) runAction(action *protocol.Action) tea.Cmd {
 	return func() tea.Msg {
-		res, err := a.eng.Execute(context.Background(), protocol.ExecuteRequest{
+		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
+		defer cancel()
+		res, err := a.eng.Execute(ctx, protocol.ExecuteRequest{
 			ActionID:     action.ID,
 			Revision:     a.snap.Revision,
 			Confirmation: confirmationOf(action.Argv),
@@ -655,7 +724,9 @@ func (a *App) runAction(action *protocol.Action) tea.Cmd {
 
 func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
 	return func() tea.Msg {
-		res, err := a.eng.Worktrees().Add(context.Background(), protocol.WorktreeAddRequest{
+		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
+		defer cancel()
+		res, err := a.eng.Worktrees().Add(ctx, protocol.WorktreeAddRequest{
 			Branch:    u.Branch,
 			NewBranch: false, // the branch already exists - give it its own worktree, don't create a new one
 			Track:     true,
@@ -667,7 +738,9 @@ func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
 
 func (a *App) runWorktreeRemove(wt *protocol.Worktree) tea.Cmd {
 	return func() tea.Msg {
-		res, err := a.eng.Worktrees().Remove(context.Background(), protocol.WorktreeRemoveRequest{
+		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
+		defer cancel()
+		res, err := a.eng.Worktrees().Remove(ctx, protocol.WorktreeRemoveRequest{
 			WorktreeID: wt.ID,
 			Revision:   a.snap.Revision,
 		})

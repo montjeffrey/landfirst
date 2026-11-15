@@ -40,7 +40,7 @@ func collectBranches(r *git.Repo) []rawBranch {
 	}, us)
 
 	var out []rawBranch
-	for _, line := range git.Lines(r.Root, "for-each-ref", "--format="+format, "refs/heads") {
+	for _, line := range r.Lines("for-each-ref", "--format="+format, "refs/heads") {
 		f := strings.Split(line, us)
 		if len(f) < 7 {
 			continue
@@ -130,7 +130,7 @@ func foldedPath(path string) string {
 func collectWorktrees(r *git.Repo) []Worktree {
 	var trees []Worktree
 	var cur *Worktree
-	for _, l := range strings.Split(git.Try(r.Root, "worktree", "list", "--porcelain", "-z"), "\x00") {
+	for _, l := range strings.Split(r.Try("worktree", "list", "--porcelain", "-z"), "\x00") {
 		switch {
 		case strings.HasPrefix(l, "worktree "):
 			if cur != nil {
@@ -175,8 +175,8 @@ func collectWorktrees(r *git.Repo) []Worktree {
 			// Each goroutine only ever writes trees[i]/trees[j] for its own
 			// index - distinct slice elements are distinct memory, so this is
 			// race-free with no lock, unlike a shared accumulator would be.
-			trees[i].Dirty = dirtyState(trees[i].Path)
-			trees[i].Op = worktreeOp(trees[i].Path)
+			trees[i].Dirty = dirtyStateWith(r.TryIn, trees[i].Path)
+			trees[i].Op = worktreeOp(r.TryIn, trees[i].Path)
 			return nil
 		})
 	}
@@ -189,9 +189,15 @@ func collectWorktrees(r *git.Repo) []Worktree {
 // Every record is one NUL-terminated field, except a rename/copy ('2'),
 // which is followed by a second NUL-terminated field holding the origin
 // path - miss that and every record after it reads one field out of phase.
-func dirtyState(path string) DirtyState {
+func dirtyState(path string) DirtyState { return dirtyStateWith(git.Try, path) }
+
+// tryFunc is git.Try or a Repo's TryIn: the latter carries the build's context
+// and counts timeouts.
+type tryFunc func(dir string, args ...string) string
+
+func dirtyStateWith(try tryFunc, path string) DirtyState {
 	var d DirtyState
-	fields := strings.Split(git.Try(path, "status", "--porcelain=v2", "-z"), "\x00")
+	fields := strings.Split(try(path, "status", "--porcelain=v2", "-z"), "\x00")
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
 		if len(f) < 2 {
@@ -225,8 +231,8 @@ func dirtyState(path string) DirtyState {
 // git reports these relative to dir for the main worktree but absolute for a
 // linked one, and every caller here needs both handled the same way. "" means
 // the command produced nothing (not a worktree, or too old to know the flag).
-func resolveGitPath(dir string, args ...string) string {
-	p := strings.TrimSpace(git.Try(dir, args...))
+func resolveGitPath(try tryFunc, dir string, args ...string) string {
+	p := strings.TrimSpace(try(dir, args...))
 	if p == "" {
 		return ""
 	}
@@ -245,8 +251,8 @@ func resolveGitPath(dir string, args ...string) string {
 // Git refuses to start a second of these at once, so the precedence below is
 // mostly academic - it exists to give a defined answer instead of an
 // arbitrary one.
-func worktreeOp(path string) InProgressOp {
-	gitDir := resolveGitPath(path, "rev-parse", "--git-dir")
+func worktreeOp(try tryFunc, path string) InProgressOp {
+	gitDir := resolveGitPath(try, path, "rev-parse", "--git-dir")
 	if gitDir == "" {
 		return OpNone
 	}
@@ -276,7 +282,7 @@ func worktreeOp(path string) InProgressOp {
 // collectFreshness reads how stale this repo's view of the remote is.
 // build.go compares FetchHeadAt against a threshold to flag Units Stale.
 func collectFreshness(r *git.Repo) Freshness {
-	p := resolveGitPath(r.Root, "rev-parse", "--git-path", "FETCH_HEAD")
+	p := resolveGitPath(r.TryIn, r.Root, "rev-parse", "--git-path", "FETCH_HEAD")
 	if p == "" {
 		return Freshness{}
 	}

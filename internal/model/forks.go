@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,7 +46,7 @@ type Contention struct {
 // changedSince returns the files a ref changed relative to an ancestor.
 func changedSince(r *git.Repo, ancestor, ref string) map[string]bool {
 	set := map[string]bool{}
-	for _, f := range git.Lines(r.Root, "diff", "--name-only", ancestor, ref) {
+	for _, f := range r.Lines("diff", "--name-only", ancestor, ref) {
 		set[f] = true
 	}
 	return set
@@ -71,18 +70,18 @@ func buildForks(r *git.Repo, units []Unit) []ForkPoint {
 		if u.Verdict == Landed || u.Verdict == SafeToDelete {
 			continue
 		}
-		mb := strings.TrimSpace(git.Try(r.Root, "merge-base", baseRef(r), git.HeadRef(u.Branch)))
+		mb := strings.TrimSpace(r.Try("merge-base", baseRef(r), git.HeadRef(u.Branch)))
 		if mb == "" {
 			continue
 		}
 		fp, ok := bySHA[mb]
 		if !ok {
 			n, _ := strconv.Atoi(strings.TrimSpace(
-				git.Try(r.Root, "rev-list", "--count", mb+".."+baseRef(r))))
+				r.Try("rev-list", "--count", mb+".."+baseRef(r))))
 			fp = &ForkPoint{
 				SHA:     mb,
 				Short:   short(mb),
-				Subject: strings.TrimSpace(git.Try(r.Root, "log", "-1", "--format=%s", mb)),
+				Subject: strings.TrimSpace(r.Try("log", "-1", "--format=%s", mb)),
 				Behind:  n,
 			}
 			bySHA[mb] = fp
@@ -117,7 +116,7 @@ func buildForks(r *git.Repo, units []Unit) []ForkPoint {
 // store shared across every worktree, which is the right target regardless
 // of whether r.Root itself is a linked worktree.
 func isolatedObjectEnv(r *git.Repo) (env []string, cleanup func(), err error) {
-	common := resolveGitPath(r.Root, "rev-parse", "--git-common-dir")
+	common := resolveGitPath(r.TryIn, r.Root, "rev-parse", "--git-common-dir")
 	if common == "" {
 		return nil, func() {}, fmt.Errorf("resolve git-common-dir for %s", r.Root)
 	}
@@ -142,7 +141,7 @@ func isolatedObjectEnv(r *git.Repo) (env []string, cleanup func(), err error) {
 // 3-arg form is read-only and needs no isolation.
 func probeMerge(r *git.Repo, mode, a, b string, isolatedEnv []string) (conflicts []string, unknown bool) {
 	if mode == "full" {
-		out, err := git.RunCtx(context.Background(), r.Root, isolatedEnv, "merge-tree", "--write-tree", "--name-only", a, b)
+		out, err := r.RunEnv(isolatedEnv, "merge-tree", "--write-tree", "--name-only", a, b)
 		if err == nil {
 			return nil, false // clean
 		}
@@ -162,11 +161,11 @@ func probeMerge(r *git.Repo, mode, a, b string, isolatedEnv []string) (conflicts
 		return conflicts, false
 	}
 
-	base := strings.TrimSpace(git.Try(r.Root, "merge-base", a, b))
+	base := strings.TrimSpace(r.Try("merge-base", a, b))
 	if base == "" {
 		return nil, true
 	}
-	out := git.Try(r.Root, "merge-tree", base, a, b)
+	out := r.Try("merge-tree", base, a, b)
 	if out == "" {
 		return nil, true
 	}

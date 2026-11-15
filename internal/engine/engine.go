@@ -146,7 +146,18 @@ func (e *engine) Snapshot(ctx context.Context, o SnapshotOptions) (*protocol.Sna
 	// with the pure conversion below, so a slow build never blocks a
 	// concurrent Decide/Execute from reading the last-known last/snap while
 	// this one is still in flight. Only the brief pointer swap needs mu.
-	m := model.Build(e.repo, opt)
+	// The build runs on a copy of the repo bound to ctx: canceling ctx kills the
+	// git processes it started, and a call that timed out is counted, because
+	// the model reads a failed git call as "nothing there" - publishing that as
+	// a snapshot would show a wedged repository as an empty, healthy one.
+	rc := e.repo.WithContext(ctx)
+	m := model.Build(rc, opt)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if n := rc.TimedOut(); n > 0 {
+		return nil, fmt.Errorf("engine: %d git call(s) timed out after %s; not showing a partial result", n, git.DefaultTimeout)
+	}
 	s := toSnapshot(m, o.Stage)
 	s.Repo.BaseRef = baseRefOf(m)
 
@@ -191,7 +202,14 @@ func (e *engine) Graph(ctx context.Context, o protocol.GraphOptions) (*protocol.
 	// path yet (no caller re-requests it standalone today - the TUI gets its
 	// graph from Snapshot's own Build call), so the extra cost is deferred
 	// until that's untrue, not paid down here speculatively.
-	m := model.Build(e.repo, opt)
+	rc := e.repo.WithContext(ctx)
+	m := model.Build(rc, opt)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if n := rc.TimedOut(); n > 0 {
+		return nil, fmt.Errorf("engine: %d git call(s) timed out after %s; not showing a partial result", n, git.DefaultTimeout)
+	}
 	return toGraph(m.Graph), nil
 }
 
