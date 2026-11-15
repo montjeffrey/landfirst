@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/montjeffrey/landfirst/internal/git"
@@ -29,6 +30,9 @@ var (
 	ErrConfirmationMismatch = errors.New("engine: confirmation does not match this action's argv")
 	// ErrBlocked means the action's own preconditions currently fail.
 	ErrBlocked = errors.New("engine: action is blocked")
+	// ErrBranchMoved means a branch the action would push is no longer at the
+	// commit the snapshot (and the user's confirmation) was about.
+	ErrBranchMoved = errors.New("engine: the branch moved since it was shown; refresh and look again")
 )
 
 // Execute runs exactly one leaf action, after re-deriving and re-checking
@@ -87,6 +91,10 @@ func (e *engine) Execute(ctx context.Context, req protocol.ExecuteRequest) (*pro
 		return nil, fmt.Errorf("%w: %s", ErrBlocked, strings.Join(action.Blocked, "; "))
 	}
 
+	if err := checkPinnedTip(ctx, action, snap); err != nil {
+		return nil, err
+	}
+
 	out, runErr := git.RunCtx(ctx, action.Cwd, nil, action.Argv...)
 	result := &protocol.ExecuteResult{Ran: true, Argv: action.Argv, Cwd: action.Cwd, Stdout: out}
 	if runErr != nil {
@@ -131,4 +139,38 @@ func ownerUnit(actionID string) (string, bool) {
 func confirmationOf(argv []string) string {
 	sum := sha256.Sum256([]byte(strings.Join(argv, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+// pushedBranch matches the "refs/heads/<b>:refs/heads/<b>" refspec pushAction builds.
+var pushedBranch = regexp.MustCompile(`^(refs/heads/.+):(refs/heads/.+)$`)
+
+// checkPinnedTip re-reads a pushed branch right before the push runs and refuses
+// when it is no longer at the commit the snapshot showed - the one the user
+// confirmed. The cached snapshot can be minutes old. (The refspec itself stays
+// "branch:branch" rather than "<commit>:branch": git push -u only records an
+// upstream when the source is a branch name.)
+func checkPinnedTip(ctx context.Context, action *protocol.Action, snap *protocol.Snapshot) error {
+	if len(action.Argv) == 0 || action.Argv[0] != "push" {
+		return nil
+	}
+	for _, arg := range action.Argv {
+		m := pushedBranch.FindStringSubmatch(arg)
+		if m == nil || m[1] != m[2] {
+			continue
+		}
+		var want string
+		for _, u := range snap.Units {
+			if u.Branch != "" && git.HeadRef(u.Branch) == m[1] {
+				want = u.HeadFull
+			}
+		}
+		if want == "" {
+			continue
+		}
+		out, err := git.RunCtx(ctx, action.Cwd, nil, "rev-parse", "--verify", "--quiet", m[1])
+		if err != nil || strings.TrimSpace(out) != want {
+			return fmt.Errorf("%w: %s", ErrBranchMoved, m[1])
+		}
+	}
+	return nil
 }

@@ -85,6 +85,7 @@ type Unit struct {
 	ID         string     `json:"id"`
 	Branch     string     `json:"branch,omitempty"`
 	Head       string     `json:"head"`
+	HeadFull   string     `json:"headFull,omitempty"` // the whole commit id Head abbreviates
 	Upstream   string     `json:"upstream,omitempty"`
 	Ahead      int        `json:"ahead"`
 	Behind     int        `json:"behind"`

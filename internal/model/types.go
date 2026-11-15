@@ -138,6 +138,7 @@ type Remedy struct {
 type Unit struct {
 	Branch     string     `json:"branch"`
 	Head       string     `json:"head"`
+	HeadFull   string     `json:"headFull"` // the whole commit id Head abbreviates
 	Upstream   string     `json:"upstream"`
 	Ahead      int        `json:"ahead"`
 	Behind     int        `json:"behind"`
