@@ -126,6 +126,13 @@ func judge(r *git.Repo, b rawBranch, worktrees []Worktree, cache map[string]cher
 		Equivalent:         c.Equivalent,
 		CherryFailed:       c.Failed,
 	}))
+	// Everything on the base is in the base, so with no upstream to compare against
+	// it would read as safe to delete. It is the branch everything else merges
+	// into; it is never offered for deletion.
+	isBase := b.Name == r.Base
+	if isBase && v == SafeToDelete {
+		v = Landed
+	}
 
 	var detail string
 	switch v {
@@ -155,6 +162,9 @@ func judge(r *git.Repo, b rawBranch, worktrees []Worktree, cache map[string]cher
 		detail = strconv.Itoa(b.Behind) + " behind"
 	default: // Landed
 		detail = "in sync"
+		if isBase && b.Upstream == "" {
+			detail = "the base branch"
+		}
 	}
 	return v, detail, c.Unlanded, c.Equivalent
 }
