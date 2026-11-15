@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/montjeffrey/landfirst/internal/git"
 	"github.com/montjeffrey/landfirst/internal/model"
 	"github.com/montjeffrey/landfirst/internal/protocol"
 )
@@ -55,6 +56,18 @@ func (e *engine) Decide(ctx context.Context, unitID string) (*protocol.DecisionT
 	dc := &decideCtx{snap: snap, unit: unit}
 	tree := &protocol.DecisionTree{UnitID: unitID, Revision: snap.Revision}
 
+	// Refuse to build any command from a name git could read as an option.
+	// Branch names are repository data: "--receive-pack=<cmd>" is a legal ref
+	// name, and as a bare argument it would run <cmd>. The commands below also
+	// use full refnames and "--", so this is the second of two independent
+	// barriers, and it is what tells the operator why nothing is offered.
+	if err := dc.checkNames(); err != nil {
+		tree.Root = protocol.DecisionNode{Action: dc.act("unsafe-name",
+			"landfirst will not build a command from this name ("+err.Error()+") - rename the branch first",
+			nil, "", protocol.ClassManual)}
+		return tree, nil
+	}
+
 	// One case per model.Verdict - see internal/model/landing.go's remedy()
 	// for the precedent this replaces (one command per verdict); this
 	// mirrors that same verdict switch but grows a tree per verdict, not a
@@ -90,6 +103,20 @@ func (e *engine) Decide(ctx context.Context, unitID string) (*protocol.DecisionT
 type decideCtx struct {
 	snap *protocol.Snapshot
 	unit *protocol.Unit
+}
+
+// checkNames gates a unit on the names its commands would be built from: the
+// branch itself and, for a diverged branch, its upstream.
+func (dc *decideCtx) checkNames() error {
+	if b := dc.unit.Branch; b != "" {
+		if err := git.CheckBranchName(dc.snap.Repo.Root, b); err != nil {
+			return err
+		}
+	}
+	if u := dc.unit.Upstream; git.OptionLike(u) {
+		return fmt.Errorf("%w: upstream %q", git.ErrUnsafeBranchName, u)
+	}
+	return nil
 }
 
 // act builds one leaf Action. ID follows protocol.Action's own documented
@@ -220,9 +247,9 @@ func (dc *decideCtx) orphaned() (protocol.DecisionNode, string) {
 	if dc.snap.Repo.Remote == "" {
 		return protocol.DecisionNode{Action: dc.noRemoteAction()}, ""
 	}
-	branch := dc.unit.Branch
+	ref := git.HeadRef(dc.unit.Branch)
 	a := dc.pushAction("push", "publish it again before the work is lost",
-		[]string{"push", "-u", dc.snap.Repo.Remote, branch + ":" + branch})
+		[]string{"push", "-u", "--", dc.snap.Repo.Remote, ref + ":" + ref})
 	return protocol.DecisionNode{Action: a}, a.ID
 }
 
@@ -231,8 +258,9 @@ func (dc *decideCtx) wrongUpstream() (protocol.DecisionNode, string) {
 		return protocol.DecisionNode{Action: dc.noRemoteAction()}, ""
 	}
 	remote, branch := dc.snap.Repo.Remote, dc.unit.Branch
+	ref := git.HeadRef(branch)
 	a := dc.pushAction("push", "point it at "+remote+"/"+branch+" and publish",
-		[]string{"push", "-u", remote, branch + ":" + branch})
+		[]string{"push", "-u", "--", remote, ref + ":" + ref})
 	return protocol.DecisionNode{Action: a}, a.ID
 }
 
@@ -240,9 +268,9 @@ func (dc *decideCtx) neverPushed() (protocol.DecisionNode, string) {
 	if dc.snap.Repo.Remote == "" {
 		return protocol.DecisionNode{Action: dc.noRemoteAction()}, ""
 	}
-	branch := dc.unit.Branch
+	ref := git.HeadRef(dc.unit.Branch)
 	a := dc.pushAction("push", "publish for the first time",
-		[]string{"push", "-u", dc.snap.Repo.Remote, branch + ":" + branch})
+		[]string{"push", "-u", "--", dc.snap.Repo.Remote, ref + ":" + ref})
 	return protocol.DecisionNode{Action: a}, a.ID
 }
 
@@ -250,15 +278,15 @@ func (dc *decideCtx) unpushed() (protocol.DecisionNode, string) {
 	if dc.snap.Repo.Remote == "" {
 		return protocol.DecisionNode{Action: dc.noRemoteAction()}, ""
 	}
-	branch := dc.unit.Branch
+	ref := git.HeadRef(dc.unit.Branch)
 	a := dc.pushAction("push", "push the outstanding commits",
-		[]string{"push", dc.snap.Repo.Remote, branch + ":" + branch})
+		[]string{"push", "--", dc.snap.Repo.Remote, ref + ":" + ref})
 	return protocol.DecisionNode{Action: a}, a.ID
 }
 
 func (dc *decideCtx) safeToDelete() (protocol.DecisionNode, string) {
 	a := dc.act("delete-branch", "already in "+dc.snap.Repo.Base+"; delete the local branch",
-		[]string{"branch", "-d", dc.unit.Branch}, dc.snap.Repo.Root, protocol.ClassSafe)
+		[]string{"branch", "-d", "--", dc.unit.Branch}, dc.snap.Repo.Root, protocol.ClassSafe)
 	return protocol.DecisionNode{Action: a}, a.ID
 }
 
@@ -295,7 +323,7 @@ func (dc *decideCtx) diverged() (protocol.DecisionNode, string) {
 	dc.attachWorktree(rebaseUpstream, wt, wtOK)
 
 	mergeUpstream := dc.act("merge-upstream", "merge "+upstream+" in",
-		[]string{"merge", "--no-edit", upstream}, "", protocol.ClassGuarded)
+		[]string{"merge", "--no-edit", "--", upstream}, "", protocol.ClassGuarded)
 	dc.attachWorktree(mergeUpstream, wt, wtOK)
 
 	// Rewrites local history - never auto-run, printed only.
@@ -307,7 +335,7 @@ func (dc *decideCtx) diverged() (protocol.DecisionNode, string) {
 	// worktree, not this branch's own - so this leaf's preconditions are
 	// read from main, not wt.
 	mergeBase := dc.act("merge-into-base", "merge into "+base,
-		[]string{"merge", "--no-ff", branch}, "", protocol.ClassGuarded)
+		[]string{"merge", "--no-ff", "--", git.HeadRef(branch)}, "", protocol.ClassGuarded)
 	dc.attachWorktree(mergeBase, main, mainOK)
 	// attachWorktree only confirms *some* worktree is clean/idle/exists at
 	// main's path - it never checks that worktree's checked-out branch is

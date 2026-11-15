@@ -57,7 +57,7 @@ func collectCommits(r *git.Repo, tracks []track, limit int, unlimited bool) ([]C
 	}
 
 	// 1. continuous first-parent trunk
-	add(parseLog(r, "--max-count="+strconv.Itoa(limit), "--first-parent", r.Base))
+	add(parseLog(r, "--max-count="+strconv.Itoa(limit), "--first-parent", git.HeadRef(r.Base)))
 
 	// 2. each branch's own commits, plus its merge-base so it visibly joins
 	perBranch := limit
@@ -73,8 +73,8 @@ func collectCommits(r *git.Repo, tracks []track, limit int, unlimited bool) ([]C
 		if t.Name == r.Base || len(seen) >= ceiling {
 			continue
 		}
-		add(parseLog(r, "--max-count="+strconv.Itoa(perBranch), r.Base+".."+t.Name))
-		if mb := strings.TrimSpace(git.Try(r.Root, "merge-base", r.Base, t.Name)); mb != "" {
+		add(parseLog(r, "--max-count="+strconv.Itoa(perBranch), git.HeadRef(r.Base)+".."+git.HeadRef(t.Name)))
+		if mb := strings.TrimSpace(git.Try(r.Root, "merge-base", git.HeadRef(r.Base), git.HeadRef(t.Name))); mb != "" {
 			wantBases = append(wantBases, mb)
 		}
 	}
@@ -245,7 +245,7 @@ func buildGraph(r *git.Repo, units []Unit, opt Options) *Graph {
 	}
 	unlimitedBranches := maxBranches < 0
 
-	baseTip := strings.TrimSpace(git.Try(r.Root, "rev-parse", r.Base))
+	baseTip := strings.TrimSpace(git.Try(r.Root, "rev-parse", git.HeadRef(r.Base)))
 	tracks := []track{{Name: r.Base, Head: baseTip}}
 	taken := map[string]bool{r.Base: true}
 
@@ -253,7 +253,7 @@ func buildGraph(r *git.Repo, units []Unit, opt Options) *Graph {
 		if u.Branch == "" || taken[u.Branch] {
 			return
 		}
-		head := strings.TrimSpace(git.Try(r.Root, "rev-parse", u.Branch))
+		head := strings.TrimSpace(git.Try(r.Root, "rev-parse", git.HeadRef(u.Branch)))
 		if head == "" {
 			return
 		}

@@ -125,7 +125,7 @@ func TestDecisionTreeOrphaned(t *testing.T) {
 	if a.Kind != "push" || a.Class != protocol.ClassSafe {
 		t.Fatalf("orphaned leaf = %+v, want Kind=push Class=safe", a)
 	}
-	want := []string{"push", "-u", "origin", "feat/orphan:feat/orphan"}
+	want := []string{"push", "-u", "--", "origin", "refs/heads/feat/orphan:refs/heads/feat/orphan"}
 	if !equalArgv(a.Argv, want) {
 		t.Fatalf("orphaned Argv = %v, want %v", a.Argv, want)
 	}
@@ -156,7 +156,7 @@ func TestDecisionTreeWrongUpstream(t *testing.T) {
 	if a.Kind != "push" || a.Class != protocol.ClassSafe {
 		t.Fatalf("wrong-upstream leaf = %+v, want Kind=push Class=safe", a)
 	}
-	want := []string{"push", "-u", "origin", "feat/mistracked:feat/mistracked"}
+	want := []string{"push", "-u", "--", "origin", "refs/heads/feat/mistracked:refs/heads/feat/mistracked"}
 	if !equalArgv(a.Argv, want) {
 		t.Fatalf("wrong-upstream Argv = %v, want %v", a.Argv, want)
 	}
@@ -183,7 +183,7 @@ func TestDecisionTreeNeverPushed(t *testing.T) {
 	if a.Kind != "push" || a.Class != protocol.ClassSafe {
 		t.Fatalf("never-pushed leaf = %+v, want Kind=push Class=safe", a)
 	}
-	want := []string{"push", "-u", "origin", "feat/local-only:feat/local-only"}
+	want := []string{"push", "-u", "--", "origin", "refs/heads/feat/local-only:refs/heads/feat/local-only"}
 	if !equalArgv(a.Argv, want) {
 		t.Fatalf("never-pushed Argv = %v, want %v", a.Argv, want)
 	}
@@ -263,7 +263,7 @@ func TestDecisionTreeUnpushed(t *testing.T) {
 	if a.Kind != "push" || a.Class != protocol.ClassSafe {
 		t.Fatalf("unpushed leaf = %+v, want Kind=push Class=safe", a)
 	}
-	want := []string{"push", "origin", "feat/unpushed:feat/unpushed"}
+	want := []string{"push", "--", "origin", "refs/heads/feat/unpushed:refs/heads/feat/unpushed"}
 	if !equalArgv(a.Argv, want) {
 		t.Fatalf("unpushed Argv = %v, want %v", a.Argv, want)
 	}
@@ -296,7 +296,7 @@ func TestDecisionTreeSafeToDelete(t *testing.T) {
 	if a.Kind != "delete-branch" || a.Class != protocol.ClassSafe {
 		t.Fatalf("safe-to-delete leaf = %+v, want Kind=delete-branch Class=safe", a)
 	}
-	want := []string{"branch", "-d", "feat/squashed"}
+	want := []string{"branch", "-d", "--", "feat/squashed"}
 	if !equalArgv(a.Argv, want) {
 		t.Fatalf("safe-to-delete Argv = %v, want %v", a.Argv, want)
 	}
@@ -586,7 +586,7 @@ func TestDecisionTreeDiverged(t *testing.T) {
 		t.Fatalf("rebase-onto-upstream = %+v", rebaseUp)
 	}
 	mergeUp := byKind["merge-upstream"]
-	if mergeUp.Class != protocol.ClassGuarded || !equalArgv(mergeUp.Argv, []string{"merge", "--no-edit", "origin/feat/diverge"}) {
+	if mergeUp.Class != protocol.ClassGuarded || !equalArgv(mergeUp.Argv, []string{"merge", "--no-edit", "--", "origin/feat/diverge"}) {
 		t.Fatalf("merge-upstream = %+v", mergeUp)
 	}
 	rebaseBase := byKind["rebase-onto-base"]
@@ -594,7 +594,7 @@ func TestDecisionTreeDiverged(t *testing.T) {
 		t.Fatalf("rebase-onto-base = %+v", rebaseBase)
 	}
 	mergeBase := byKind["merge-into-base"]
-	if mergeBase.Class != protocol.ClassGuarded || !equalArgv(mergeBase.Argv, []string{"merge", "--no-ff", "feat/diverge"}) {
+	if mergeBase.Class != protocol.ClassGuarded || !equalArgv(mergeBase.Argv, []string{"merge", "--no-ff", "--", "refs/heads/feat/diverge"}) {
 		t.Fatalf("merge-into-base = %+v", mergeBase)
 	}
 	// merge-into-base runs where base is checked out (the main worktree),
