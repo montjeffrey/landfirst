@@ -203,7 +203,9 @@ func parseLegacyMergeTree(out string) []string {
 // buildContentions measures genuine overlap between branches that share a fork
 // point. Pairs from different forks are not compared: their conflict count
 // reports era drift, not contention, and including them buries the real signal.
-func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int) []Contention {
+// It also returns the overlapping pairs it left unprobed because maxPairs was
+// reached, so the caller can say so instead of letting them read as clean.
+func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int) ([]Contention, [][2]string) {
 	// Isolation is only needed for the "full" --write-tree path (the legacy
 	// path is read-only), and is set up once for the whole probing phase -
 	// not once per pair, which would be wasteful.
@@ -223,6 +225,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 	}
 
 	var out []Contention
+	var skipped [][2]string
 	pairs := 0
 	for _, fp := range forks {
 		if len(fp.Branches) < 2 {
@@ -235,9 +238,6 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 		}
 		for i := 0; i < len(fp.Branches); i++ {
 			for j := i + 1; j < len(fp.Branches); j++ {
-				if maxPairs > 0 && pairs >= maxPairs {
-					return out
-				}
 				a, b := fp.Branches[i], fp.Branches[j]
 				var shared []string
 				for f := range changed[a] {
@@ -246,6 +246,10 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 					}
 				}
 				if len(shared) == 0 {
+					continue
+				}
+				if maxPairs > 0 && pairs >= maxPairs {
+					skipped = append(skipped, [2]string{a, b})
 					continue
 				}
 				sort.Strings(shared)
@@ -276,7 +280,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Real > out[j].Real })
-	return out
+	return out, skipped
 }
 
 // SweepStaleObjectStores removes landfirst-objects-* temp directories older

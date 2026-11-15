@@ -50,6 +50,11 @@ type Freshness struct {
 type Summary struct {
 	StrandedCommits int `json:"strandedCommits"`
 	AtRisk          int `json:"atRisk"`
+
+	// PairsSkipped: overlapping pairs not probed because -max-pairs (MaxPairs)
+	// was reached. 0 when the cap did not bite.
+	PairsSkipped int `json:"pairsSkipped,omitempty"`
+	MaxPairs     int `json:"maxPairs,omitempty"`
 }
 
 type Risk struct {
@@ -137,6 +142,8 @@ type PlanItem struct {
 	Behind    int      `json:"behind"`
 	Conflicts int      `json:"conflicts"` // -1 means not probed
 	Why       []string `json:"why"`
+
+	NotCompared int `json:"notCompared,omitempty"` // branches this one was never compared with
 }
 
 // ---- graph ----

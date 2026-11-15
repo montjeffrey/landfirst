@@ -377,6 +377,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.status = fmt.Sprintf("read in %dms · git %s · conflict probing: %s · %s",
 			msg.snap.BuildMillis, msg.snap.Repo.GitVersion, msg.snap.Repo.ConflictMode, fetched)
+		if n := truncationNote(msg.snap.Summary); n != "" {
+			a.status += " · " + n
+		}
 		if a.eng.WatchFallback() {
 			// Durable, not transient like the "updated: fast/full" status
 			// below - this stays visible on every refresh for as long as

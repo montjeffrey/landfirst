@@ -286,7 +286,7 @@ func toSnapshot(m *model.Model, stage protocol.Stage) *protocol.Snapshot {
 	}
 	plan := make([]protocol.PlanItem, len(m.Plan))
 	for i, p := range m.Plan {
-		plan[i] = protocol.PlanItem{Order: p.Order, Branch: p.Branch, Ahead: p.Ahead, Behind: p.BehindN, Conflicts: p.Conflicts, Why: p.Why}
+		plan[i] = protocol.PlanItem{Order: p.Order, Branch: p.Branch, Ahead: p.Ahead, Behind: p.BehindN, Conflicts: p.Conflicts, NotCompared: p.NotCompared, Why: p.Why}
 	}
 
 	s := &protocol.Snapshot{
@@ -301,7 +301,8 @@ func toSnapshot(m *model.Model, stage protocol.Stage) *protocol.Snapshot {
 		Forks:       forks,
 		Contentions: contentions,
 		Plan:        plan,
-		Summary:     protocol.Summary{StrandedCommits: m.StrandedCommits, AtRisk: m.AtRisk},
+		Summary: protocol.Summary{StrandedCommits: m.StrandedCommits, AtRisk: m.AtRisk,
+			PairsSkipped: m.PairsSkipped, MaxPairs: m.MaxPairs},
 		BuildMillis: m.BuildMillis,
 	}
 	s.Revision = revisionOf(s)

@@ -74,10 +74,12 @@ func Build(r *git.Repo, opt Options) *Model {
 	// Forks and contentions must exist before the plan is built: buildPlan
 	// derives PlanItem.Conflicts from contentions rather than probing itself.
 	m.Forks = buildForks(r, units)
+	var skipped [][2]string
 	if opt.Probe {
-		m.Contentions = buildContentions(r, m.Forks, mode, opt.MaxPairs)
+		m.Contentions, skipped = buildContentions(r, m.Forks, mode, opt.MaxPairs)
+		m.PairsSkipped, m.MaxPairs = len(skipped), opt.MaxPairs
 	}
-	m.Plan = buildPlan(r, units, m.Contentions, opt.Probe)
+	m.Plan = buildPlan(r, units, m.Forks, m.Contentions, skipped, opt.Probe)
 	m.Graph = buildGraph(r, units, opt)
 	m.BuildMillis = time.Since(start).Milliseconds()
 	return m
