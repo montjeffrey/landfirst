@@ -43,13 +43,20 @@ func Build(r *git.Repo, opt Options) *Model {
 
 	trees := collectWorktrees(r)
 	cache := map[string]cherryResult{}
-	units := buildUnits(r, trees, cache)
+	units, unitsErr := buildUnits(r, trees, cache)
 
 	m := &Model{
 		Repo: r.Name, Root: r.Root, Base: r.Base, Remote: r.Remote,
 		GeneratedAt: time.Now(), GitVersion: ver, ConflictMode: mode,
 		Freshness: collectFreshness(r),
 		Units:     units, Worktrees: trees,
+	}
+	if unitsErr != nil {
+		// Nothing below means anything without the branch list, and an empty
+		// model would read as an all-clear. Callers must check ReadErr.
+		m.ReadErr = unitsErr
+		m.BuildMillis = time.Since(start).Milliseconds()
+		return m
 	}
 
 	// A zero FetchHeadAt (never fetched) makes time.Since huge rather than

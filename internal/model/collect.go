@@ -33,14 +33,29 @@ type rawBranch struct {
 // single process. Asking per branch meant dozens of spawns, which is what made
 // this unusably slow on Windows.
 func collectBranches(r *git.Repo) []rawBranch {
+	out, _ := collectBranchesErr(r)
+	return out
+}
+
+// collectBranchesErr is collectBranches reporting a failed for-each-ref. One ref
+// pointing at a missing object makes it exit 128 with nothing listed; that must
+// not read as "this repository has no branches".
+func collectBranchesErr(r *git.Repo) ([]rawBranch, error) {
 	format := strings.Join([]string{
 		"%(refname)", "%(objectname)", "%(upstream:short)",
 		"%(upstream:track,nobracket)", "%(committerdate:iso-strict)",
 		"%(authorname)", "%(contents:subject)",
 	}, us)
 
+	raw, err := r.Run("for-each-ref", "--format="+format, "refs/heads")
+	if err != nil {
+		return nil, err
+	}
 	var out []rawBranch
-	for _, line := range r.Lines("for-each-ref", "--format="+format, "refs/heads") {
+	for _, line := range strings.Split(raw, "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
 		f := strings.Split(line, us)
 		if len(f) < 7 {
 			continue
@@ -58,7 +73,7 @@ func collectBranches(r *git.Repo) []rawBranch {
 		}
 		out = append(out, b)
 	}
-	return out
+	return out, nil
 }
 
 // LocationRisk flags a worktree path that sync software or nesting could
