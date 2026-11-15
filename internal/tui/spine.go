@@ -55,7 +55,7 @@ func (a *App) viewTopology(w, body int) string {
 			dot := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("●")
 			line := "   " + dot + styFaint.Render("── ") +
 				lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(label) +
-				styFaint.Render("  "+r.fork.Short+"  "+clip(r.fork.Subject, maxInt(10, w-46)))
+				styFaint.Render("  "+Sanitize(r.fork.Short)+"  "+clip(r.fork.Subject, maxInt(10, w-46)))
 			if n := len(r.fork.Branches); n > 1 {
 				line += styFaint.Render(fmt.Sprintf("   %d branches share this fork", n))
 			}
@@ -116,7 +116,7 @@ func (a *App) viewTopology(w, body int) string {
 					names := make([]string, 0, 3)
 					for _, f := range top.files[:minInt(3, len(top.files))] {
 						parts := strings.Split(f, "/")
-						names = append(names, parts[len(parts)-1])
+						names = append(names, Sanitize(parts[len(parts)-1]))
 					}
 					files = "  " + strings.Join(names, ", ")
 				}
@@ -189,7 +189,7 @@ func worktreeText(u *protocol.Unit, snap *protocol.Snapshot, pathWidth int) (tex
 	opInProgress := wt.Op != "" && wt.Op != "none"
 	text = "⬖ " + clip(wt.Path, pathWidth) + " " + state
 	if opInProgress {
-		text += " " + wt.Op + "-in-progress"
+		text += " " + Sanitize(wt.Op) + "-in-progress"
 	}
 	return text, dirtyN > 0 || opInProgress
 }
@@ -265,6 +265,7 @@ func (a *App) topologyRows() []topoRow {
 }
 
 func clip(s string, w int) string {
+	s = Sanitize(s)
 	r := []rune(s)
 	if len(r) <= w {
 		return s
