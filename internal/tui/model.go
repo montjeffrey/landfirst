@@ -97,6 +97,9 @@ type pendingConfirm struct {
 	action *protocol.Action   // confirmAction: the leaf about to run
 	unit   *protocol.Unit     // confirmWorktreeAdd: the branch getting a new worktree
 	wt     *protocol.Worktree // confirmWorktreeRemove: the worktree about to go
+	// rev is the snapshot revision the prompt was built from. It is what gets sent
+	// when the user answers y, even if a refresh has replaced a.snap by then.
+	rev string
 }
 
 // prompt is the question shown before "[y] yes   [any other key] no".
@@ -510,17 +513,17 @@ func (a *App) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			switch p.kind {
 			case confirmWorktreeAdd:
 				a.status = "creating worktree for " + p.unit.Branch + " …"
-				return a, a.runWorktreeAdd(p.unit)
+				return a, a.runWorktreeAdd(p.unit, p.rev)
 			case confirmWorktreeRemove:
 				a.status = "removing worktree at " + p.wt.Path + " …"
-				return a, a.runWorktreeRemove(p.wt)
+				return a, a.runWorktreeRemove(p.wt, p.rev)
 			default:
 				a.status = "running git " + strings.Join(p.action.Argv, " ") + " …"
 				// The tree this leaf came from is now stale the moment it
 				// runs - exit tree mode rather than leave a menu pointing at
 				// a decision that no longer reflects post-action state.
 				a.tree, a.node, a.path = nil, nil, nil
-				return a, a.runAction(p.action)
+				return a, a.runAction(p.action, p.rev)
 			}
 		default:
 			a.confirm = nil
@@ -647,7 +650,7 @@ func (a *App) enterNode(node *protocol.DecisionNode) {
 	}
 	action := node.Action
 	if action.Class != protocol.ClassManual && len(action.Blocked) == 0 {
-		a.confirm = &pendingConfirm{kind: confirmAction, action: action}
+		a.confirm = &pendingConfirm{kind: confirmAction, action: action, rev: a.promptRevision()}
 	}
 }
 
@@ -696,7 +699,7 @@ func (a *App) wtAdd() {
 		a.status = "already has a worktree"
 		return
 	}
-	a.confirm = &pendingConfirm{kind: confirmWorktreeAdd, unit: u}
+	a.confirm = &pendingConfirm{kind: confirmWorktreeAdd, unit: u, rev: a.promptRevision()}
 }
 
 // wtRemove stages a confirm for removing the selected unit's worktree. A
@@ -712,13 +715,23 @@ func (a *App) wtRemove() {
 		a.status = "no worktree for this branch"
 		return
 	}
-	a.confirm = &pendingConfirm{kind: confirmWorktreeRemove, wt: wt}
+	a.confirm = &pendingConfirm{kind: confirmWorktreeRemove, wt: wt, rev: a.promptRevision()}
 }
 
-func (a *App) runAction(action *protocol.Action) tea.Cmd {
-	// Captured now, on the Update goroutine: the closure runs later, and must send
-	// the revision the user confirmed against, not whatever a refresh has since stored.
-	rev := a.snap.Revision
+// promptRevision is the revision of what the user is looking at when a confirm
+// prompt is built: the decision tree's, when a tree is open (its actions were
+// derived from that snapshot), else the current snapshot's.
+func (a *App) promptRevision() string {
+	if a.tree != nil && a.tree.Revision != "" {
+		return a.tree.Revision
+	}
+	if a.snap != nil {
+		return a.snap.Revision
+	}
+	return ""
+}
+
+func (a *App) runAction(action *protocol.Action, rev string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
@@ -731,10 +744,7 @@ func (a *App) runAction(action *protocol.Action) tea.Cmd {
 	}
 }
 
-func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
-	// Captured now, on the Update goroutine: the closure runs later, and must send
-	// the revision the user confirmed against, not whatever a refresh has since stored.
-	rev := a.snap.Revision
+func (a *App) runWorktreeAdd(u *protocol.Unit, rev string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
@@ -748,10 +758,7 @@ func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
 	}
 }
 
-func (a *App) runWorktreeRemove(wt *protocol.Worktree) tea.Cmd {
-	// Captured now, on the Update goroutine: the closure runs later, and must send
-	// the revision the user confirmed against, not whatever a refresh has since stored.
-	rev := a.snap.Revision
+func (a *App) runWorktreeRemove(wt *protocol.Worktree, rev string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
