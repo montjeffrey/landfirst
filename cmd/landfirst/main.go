@@ -9,10 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/montjeffrey/landfirst/internal/engine"
 	"github.com/montjeffrey/landfirst/internal/git"
+	"github.com/montjeffrey/landfirst/internal/model"
 	"github.com/montjeffrey/landfirst/internal/protocol"
 	"github.com/montjeffrey/landfirst/internal/tui"
 )
@@ -53,6 +56,8 @@ func main() {
 		os.Exit(code)
 	}
 	defer eng.Close()
+	// An earlier run killed mid-probe leaves its temp object store behind.
+	model.SweepStaleObjectStores(24 * time.Hour)
 
 	stage := protocol.StageFull
 	if *noProbe {
@@ -62,7 +67,9 @@ func main() {
 	graphOpt := protocol.GraphOptions{Limit: *limit, Branches: *branches, All: *all}
 
 	if *asJSON || *plain {
-		snap, err := eng.Snapshot(context.Background(), snapOpt)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		snap, err := eng.Snapshot(ctx, snapOpt)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "landfirst:", err)
 			os.Exit(1)
