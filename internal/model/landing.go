@@ -281,7 +281,7 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) ([
 			wts := byBranch[b.Name]
 			v, detail, un, eq := judge(r, b, wts, cache, &mu)
 			u := Unit{
-				Branch: b.Name, Head: short(b.Head), Upstream: b.Upstream,
+				Branch: b.Name, Head: short(b.Head), HeadFull: b.Head, Upstream: b.Upstream,
 				Ahead: b.Ahead, Behind: b.Behind, Unlanded: un, Equivalent: eq,
 				Date: b.Date, Author: b.Author, Subject: b.Subject,
 				Worktrees: wts, Verdict: v, Detail: detail,
@@ -319,7 +319,7 @@ func buildUnits(r *git.Repo, trees []Worktree, cache map[string]cherryResult) ([
 			v, detail = InProgress, string(w.Op)+" in progress"
 		}
 		u := Unit{
-			Head: short(w.Head), Date: date,
+			Head: short(w.Head), HeadFull: w.Head, Date: date,
 			Author:    strings.TrimSpace(r.Try("log", "-1", "--format=%an", w.Head, "--")),
 			Subject:   strings.TrimSpace(r.Try("log", "-1", "--format=%s", w.Head, "--")),
 			Worktrees: []Worktree{w}, Risks: w.Risks,

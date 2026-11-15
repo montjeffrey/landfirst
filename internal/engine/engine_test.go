@@ -367,3 +367,9 @@ func TestConcurrentMixedEngineCallsRaceFree(t *testing.T) {
 		t.Error(msg)
 	}
 }
+
+// tip is a branch's current full commit id.
+func (f *efixture) tip(branch string) string {
+	f.t.Helper()
+	return strings.TrimSpace(f.run("rev-parse", "refs/heads/"+branch))
+}
