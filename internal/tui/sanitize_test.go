@@ -160,3 +160,30 @@ func TestEncodeJSONIsFaithfulButHasNoRawControlBytes(t *testing.T) {
 		t.Fatalf("-json must stay faithful data: got %q", back.Units[0].Detail)
 	}
 }
+
+// Supplementary-plane format characters (the Unicode tag block, U+E0000...) are
+// legal in a branch name. Escaped with only their low 16 bits, U+E0069 and
+// U+E006E came out as "i" and "n", so a branch named "ma"+tag characters
+// decoded from -json as "main".
+func TestEncodeJSONKeepsSupplementaryPlaneCharactersDistinct(t *testing.T) {
+	name := "ma\U000E0069\U000E006E"
+	snap := &protocol.Snapshot{
+		Repo:  protocol.RepoInfo{Name: "r", Base: "main"},
+		Units: []protocol.Unit{{Branch: name, Verdict: "safe-to-delete"}},
+	}
+	out, err := EncodeJSON(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back protocol.Snapshot
+	if err := json.Unmarshal(out, &back); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	got := back.Units[0].Branch
+	if got == "main" {
+		t.Fatalf("branch %q decoded as \"main\"", name)
+	}
+	if got != name {
+		t.Fatalf("round trip changed the name: got %q, want %q", got, name)
+	}
+}

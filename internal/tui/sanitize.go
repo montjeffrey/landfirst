@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/montjeffrey/landfirst/internal/protocol"
@@ -83,6 +84,14 @@ func EncodeJSON(snap *protocol.Snapshot) ([]byte, error) {
 	return escapeJSONControls(buf.Bytes()), nil
 }
 
+func writeU(out *bytes.Buffer, hex string, r rune) {
+	out.WriteString(`\u`)
+	out.WriteByte(hex[r>>12&0xf])
+	out.WriteByte(hex[r>>8&0xf])
+	out.WriteByte(hex[r>>4&0xf])
+	out.WriteByte(hex[r&0xf])
+}
+
 // escapeJSONControls works on the encoded bytes. Raw characters can only be
 // inside string literals here - JSON syntax is ASCII - so replacing them is
 // always a valid escape.
@@ -94,11 +103,15 @@ func escapeJSONControls(in []byte) []byte {
 		r, size := utf8.DecodeRune(in[i:])
 		if size > 1 || r == 0x7f {
 			if unsafeRune(r) {
-				out.WriteString(`\u`)
-				out.WriteByte(hex[r>>12&0xf])
-				out.WriteByte(hex[r>>8&0xf])
-				out.WriteByte(hex[r>>4&0xf])
-				out.WriteByte(hex[r&0xf])
+				// Above U+FFFF JSON needs a surrogate pair; the low 16 bits alone
+				// name a different character.
+				if r > 0xffff {
+					hi, lo := utf16.EncodeRune(r)
+					writeU(&out, hex, hi)
+					writeU(&out, hex, lo)
+				} else {
+					writeU(&out, hex, r)
+				}
 				i += size
 				continue
 			}
