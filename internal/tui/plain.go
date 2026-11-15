@@ -17,6 +17,7 @@ var verdictLabel = map[string]struct{ Label, Blurb string }{
 	"orphaned":       {"orphaned", "remote branch was deleted and the changes are not in the base"},
 	"wrong-upstream": {"wrong upstream", "tracks another branch, so pushing does not publish this work"},
 	"never-pushed":   {"never pushed", "has changes the remote has never seen"},
+	"unknown":        {"unknown", "git could not compare this branch with the base, so it is not known to be safe"},
 	"diverged":       {"diverged", "local and remote both moved; needs a rebase or merge"},
 	"unpushed":       {"unpushed work", "ahead of its remote"},
 	"detached":       {"detached", "worktree is on no branch; commits here are easy to lose"},
@@ -32,7 +33,13 @@ func PlainReport(s *protocol.Snapshot) string {
 	fmt.Fprintf(&b, "%s  base %s  ·  %d units  ·  %d worktrees  ·  git %s (%s)\n",
 		s.Repo.Name, s.Repo.Base, len(s.Units), len(s.Worktrees), s.Repo.GitVersion, s.Repo.ConflictMode)
 	if s.Summary.AtRisk > 0 {
-		fmt.Fprintf(&b, "  %d change(s) across %d branch(es) exist only on this machine\n\n", s.Summary.StrandedCommits, s.Summary.AtRisk)
+		fmt.Fprintf(&b, "  %d change(s) across %d branch(es) exist only on this machine\n", s.Summary.StrandedCommits, s.Summary.AtRisk)
+		if n := unassessed(s); n > 0 {
+			b.WriteString("  " + unassessedNote(n) + "\n")
+		}
+		b.WriteString("\n")
+	} else if n := unassessed(s); n > 0 {
+		b.WriteString("  " + unassessedNote(n) + "\n\n")
 	} else {
 		b.WriteString("  everything with local work has reached the remote\n\n")
 	}
@@ -74,4 +81,21 @@ func PlainReport(s *protocol.Snapshot) string {
 		}
 	}
 	return b.String()
+}
+
+// unassessed counts units git could not compare with the base. The all-clear
+// banner must not be shown while any exist: "everything with local work has
+// reached the remote" is a claim about branches that were never assessed.
+func unassessed(s *protocol.Snapshot) int {
+	n := 0
+	for _, u := range s.Units {
+		if u.Verdict == "unknown" {
+			n++
+		}
+	}
+	return n
+}
+
+func unassessedNote(n int) string {
+	return fmt.Sprintf("%d branch(es) could not be compared with the base and are not known to be safe", n)
 }

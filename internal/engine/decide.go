@@ -81,6 +81,12 @@ func (e *engine) Decide(ctx context.Context, unitID string) (*protocol.DecisionT
 		tree.Root, tree.Suggested = dc.wrongUpstream()
 	case string(model.NeverPushed):
 		tree.Root, tree.Suggested = dc.neverPushed()
+	case string(model.Unknown):
+		// Nothing to run: the comparison itself failed, so any command would be a
+		// guess. Say so and stop.
+		tree.Root = protocol.DecisionNode{Action: dc.act("unknown",
+			"git could not compare this branch with the base - run git cherry by hand to see why before deleting or pushing it",
+			nil, "", protocol.ClassManual)}
 	case string(model.Unpushed):
 		tree.Root, tree.Suggested = dc.unpushed()
 	case string(model.SafeToDelete):

@@ -49,6 +49,7 @@ var severityByVerdict = map[string]verdictSeverity{
 	"orphaned":       sevBad,
 	"wrong-upstream": sevBad,
 	"never-pushed":   sevBad,
+	"unknown":        sevBad,
 	"diverged":       sevWarn,
 	"unpushed":       sevWarn,
 	"detached":       sevWarn,

@@ -74,6 +74,11 @@ func (a *App) header(w int) string {
 	if snap.Summary.AtRisk > 0 {
 		banner = styBanner.Foreground(cBad).Render(fmt.Sprintf(
 			"  %d change(s) across %d branch(es) exist only on this machine", snap.Summary.StrandedCommits, snap.Summary.AtRisk))
+		if n := unassessed(snap); n > 0 {
+			banner += styBanner.Foreground(cBad).Render("; " + unassessedNote(n))
+		}
+	} else if n := unassessed(snap); n > 0 {
+		banner = styBanner.Foreground(cBad).Render("  " + unassessedNote(n))
 	} else {
 		banner = styBanner.Foreground(cOK).Render("  everything with local work has reached the remote")
 	}
