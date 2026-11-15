@@ -1,18 +1,12 @@
 package model
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/montjeffrey/landfirst/internal/git"
-)
-
-// Field and record separators. Legal in a git format string and illegal in a
-// ref name, so they cannot appear inside the data they delimit.
-const (
-	fieldSep  = "\x1f"
-	recordSep = "\x1e"
 )
 
 // Commit is one node in the graph.
@@ -51,33 +45,9 @@ type Graph struct {
 }
 
 func parseLog(r *git.Repo, args ...string) []Commit {
-	format := recordSep + strings.Join([]string{"%H", "%P", "%D", "%s", "%an", "%cI"}, fieldSep)
-	full := append([]string{"log", "--no-color", "--date-order", "--format=" + format}, args...)
-
-	var commits []Commit
-	for _, rec := range strings.Split(git.Try(r.Root, full...), recordSep) {
-		rec = strings.TrimLeft(rec, "\r\n")
-		if rec == "" {
-			continue
-		}
-		f := strings.SplitN(rec, fieldSep, 6)
-		if len(f) < 6 {
-			continue
-		}
-		c := Commit{Hash: f[0], Subject: f[3], Author: f[4]}
-		c.Short = short(c.Hash)
-		if p := strings.TrimSpace(f[1]); p != "" {
-			c.Parents = strings.Fields(p)
-		}
-		for _, ref := range strings.Split(f[2], ",") {
-			if ref = strings.TrimSpace(ref); ref != "" {
-				c.Refs = append(c.Refs, ref)
-			}
-		}
-		c.Date, _ = time.Parse(time.RFC3339, strings.TrimSpace(f[5]))
-		commits = append(commits, c)
-	}
-	return commits
+	format := strings.Join([]string{"%H", "%P", "%D", "%s", "%an", "%cI"}, "%x00")
+	full := append([]string{"log", "-z", "--no-color", "--date-order", "--format=" + format}, args...)
+	return parseLogRecords(git.Try(r.Root, full...))
 }
 
 // topoSort orders children before parents, newest first among what is ready.
@@ -155,4 +125,49 @@ func topoSort(commits []Commit) []Commit {
 		out = append(out, rest...)
 	}
 	return out
+}
+
+// reHash is a full object name: 40 hex digits (SHA-1) or 64 (SHA-256).
+var reHash = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// logFields is how many NUL-terminated fields one record of parseLog's format holds.
+const logFields = 6
+
+// parseLogRecords reads "git log -z" output whose format is six NUL-separated
+// fields per commit. NUL cannot occur in a commit subject or author name as git
+// reports them, so - unlike the 0x1e/0x1f bytes this replaced, which a commit
+// message may contain - no message can end its own record and start a forged
+// one. The hash and parent fields are still checked: a record whose hash is not
+// an object name is dropped rather than drawn.
+func parseLogRecords(out string) []Commit {
+	fields := strings.Split(out, "\x00")
+	var commits []Commit
+	for i := 0; i+logFields <= len(fields); i += logFields {
+		f := fields[i : i+logFields]
+		hash := strings.TrimLeft(f[0], "\r\n")
+		if !reHash.MatchString(hash) {
+			continue
+		}
+		var parents []string
+		valid := true
+		for _, p := range strings.Fields(f[1]) {
+			if !reHash.MatchString(p) {
+				valid = false
+				break
+			}
+			parents = append(parents, p)
+		}
+		if !valid {
+			continue
+		}
+		c := Commit{Hash: hash, Short: short(hash), Parents: parents, Subject: f[3], Author: f[4]}
+		for _, ref := range strings.Split(f[2], ",") {
+			if ref = strings.TrimSpace(ref); ref != "" {
+				c.Refs = append(c.Refs, ref)
+			}
+		}
+		c.Date, _ = time.Parse(time.RFC3339, strings.TrimSpace(f[5]))
+		commits = append(commits, c)
+	}
+	return commits
 }
