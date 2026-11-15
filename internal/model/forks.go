@@ -44,13 +44,22 @@ type Contention struct {
 	SameFork   bool     `json:"sameFork"`
 }
 
-// changedSince returns the files a ref changed relative to an ancestor.
-func changedSince(r *git.Repo, ancestor, ref string) map[string]bool {
-	set := map[string]bool{}
-	for _, f := range r.Lines("diff", "--name-only", ancestor, ref) {
-		set[f] = true
+// changedSince returns the files a ref changed relative to an ancestor. ok is
+// false when git could not say: an empty set would read as "changed nothing",
+// and such a branch would look conflict-free. The trailing "--" keeps a file in
+// the working tree from being mistaken for the ref (or the other way round).
+func changedSince(r *git.Repo, ancestor, ref string) (set map[string]bool, ok bool) {
+	out, err := r.Run("diff", "--name-only", ancestor, ref, "--")
+	if err != nil {
+		return nil, false
 	}
-	return set
+	set = map[string]bool{}
+	for _, f := range strings.Split(out, "\n") {
+		if f = strings.TrimSpace(f); f != "" {
+			set[f] = true
+		}
+	}
+	return set, true
 }
 
 // buildForks groups branches by the commit they forked from.
@@ -78,11 +87,11 @@ func buildForks(r *git.Repo, units []Unit) []ForkPoint {
 		fp, ok := bySHA[mb]
 		if !ok {
 			n, _ := strconv.Atoi(strings.TrimSpace(
-				r.Try("rev-list", "--count", mb+".."+baseRef(r))))
+				r.Try("rev-list", "--count", mb+".."+baseRef(r), "--")))
 			fp = &ForkPoint{
 				SHA:     mb,
 				Short:   short(mb),
-				Subject: strings.TrimSpace(r.Try("log", "-1", "--format=%s", mb)),
+				Subject: strings.TrimSpace(r.Try("log", "-1", "--format=%s", mb, "--")),
 				Behind:  n,
 			}
 			bySHA[mb] = fp
@@ -204,8 +213,9 @@ func parseLegacyMergeTree(out string) []string {
 // point. Pairs from different forks are not compared: their conflict count
 // reports era drift, not contention, and including them buries the real signal.
 // It also returns the overlapping pairs it left unprobed because maxPairs was
-// reached, so the caller can say so instead of letting them read as clean.
-func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int) ([]Contention, [][2]string) {
+// reached, so the caller can say so instead of letting them read as clean, and
+// the branches whose changes git could not read (compared with nothing).
+func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int) ([]Contention, [][2]string, map[string]bool) {
 	// Isolation is only needed for the "full" --write-tree path (the legacy
 	// path is read-only), and is set up once for the whole probing phase -
 	// not once per pair, which would be wasteful.
@@ -226,6 +236,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 
 	var out []Contention
 	var skipped [][2]string
+	unreadable := map[string]bool{}
 	pairs := 0
 	for _, fp := range forks {
 		if len(fp.Branches) < 2 {
@@ -234,11 +245,18 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 		// Files each branch changed since the shared fork point.
 		changed := make(map[string]map[string]bool, len(fp.Branches))
 		for _, b := range fp.Branches {
-			changed[b] = changedSince(r, fp.SHA, git.HeadRef(b))
+			set, ok := changedSince(r, fp.SHA, git.HeadRef(b))
+			if !ok {
+				unreadable[b] = true
+			}
+			changed[b] = set
 		}
 		for i := 0; i < len(fp.Branches); i++ {
 			for j := i + 1; j < len(fp.Branches); j++ {
 				a, b := fp.Branches[i], fp.Branches[j]
+				if unreadable[a] || unreadable[b] {
+					continue
+				}
 				var shared []string
 				for f := range changed[a] {
 					if changed[b][f] {
@@ -280,7 +298,7 @@ func buildContentions(r *git.Repo, forks []ForkPoint, mode string, maxPairs int)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Real > out[j].Real })
-	return out, skipped
+	return out, skipped, unreadable
 }
 
 // SweepStaleObjectStores removes landfirst-objects-* temp directories older

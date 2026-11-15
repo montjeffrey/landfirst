@@ -143,7 +143,8 @@ type PlanItem struct {
 	Conflicts int      `json:"conflicts"` // -1 means not probed
 	Why       []string `json:"why"`
 
-	NotCompared int `json:"notCompared,omitempty"` // branches this one was never compared with
+	NotCompared int  `json:"notCompared,omitempty"` // branches this one was never compared with
+	Unreadable  bool `json:"unreadable,omitempty"`  // its changes could not be read
 }
 
 // ---- graph ----

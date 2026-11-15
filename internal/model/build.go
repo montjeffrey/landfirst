@@ -75,11 +75,12 @@ func Build(r *git.Repo, opt Options) *Model {
 	// derives PlanItem.Conflicts from contentions rather than probing itself.
 	m.Forks = buildForks(r, units)
 	var skipped [][2]string
+	var unreadable map[string]bool
 	if opt.Probe {
-		m.Contentions, skipped = buildContentions(r, m.Forks, mode, opt.MaxPairs)
+		m.Contentions, skipped, unreadable = buildContentions(r, m.Forks, mode, opt.MaxPairs)
 		m.PairsSkipped, m.MaxPairs = len(skipped), opt.MaxPairs
 	}
-	m.Plan = buildPlan(r, units, m.Forks, m.Contentions, skipped, opt.Probe)
+	m.Plan = buildPlan(r, units, m.Forks, m.Contentions, skipped, unreadable, opt.Probe)
 	m.Graph = buildGraph(r, units, opt)
 	m.BuildMillis = time.Since(start).Milliseconds()
 	return m

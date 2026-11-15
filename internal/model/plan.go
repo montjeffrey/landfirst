@@ -9,13 +9,20 @@ import (
 )
 
 // changedFiles is the pre-filter for collisions: two branches that never touch
-// the same file cannot conflict, so they are never probed.
-func changedFiles(r *git.Repo, branch string) map[string]bool {
-	set := map[string]bool{}
-	for _, f := range r.Lines("diff", "--name-only", baseRef(r)+"..."+git.HeadRef(branch)) {
-		set[f] = true
+// the same file cannot conflict, so they are never probed. ok is false when git
+// could not list the branch's changes.
+func changedFiles(r *git.Repo, branch string) (set map[string]bool, ok bool) {
+	out, err := r.Run("diff", "--name-only", baseRef(r)+"..."+git.HeadRef(branch), "--")
+	if err != nil {
+		return nil, false
 	}
-	return set
+	set = map[string]bool{}
+	for _, f := range strings.Split(out, "\n") {
+		if f = strings.TrimSpace(f); f != "" {
+			set[f] = true
+		}
+	}
+	return set, true
 }
 
 // buildPlan orders branches by how safe they are to merge next.
@@ -31,10 +38,11 @@ func changedFiles(r *git.Repo, branch string) map[string]bool {
 // A branch is only ever compared with branches from its own fork point, and
 // only up to the -max-pairs cap. Every other candidate is counted in
 // NotCompared so that a 0 in Conflicts is never mistaken for "checked, clean".
-func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Contention, skipped [][2]string, probed bool) []PlanItem {
+func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Contention, skipped [][2]string, unreadable map[string]bool, probed bool) []PlanItem {
 	type cand struct {
 		u     Unit
 		files map[string]bool
+		bad   bool
 	}
 	var cands []cand
 	for _, u := range units {
@@ -48,7 +56,8 @@ func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Conte
 		if u.Verdict == SafeToDelete || u.Verdict == Landed || u.Verdict == Behind || u.Verdict == InProgress {
 			continue
 		}
-		cands = append(cands, cand{u, changedFiles(r, u.Branch)})
+		files, ok := changedFiles(r, u.Branch)
+		cands = append(cands, cand{u: u, files: files, bad: !ok || unreadable[u.Branch]})
 	}
 
 	forkOf := map[string]string{}
@@ -72,6 +81,20 @@ func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Conte
 			notCompared[p[0]]++
 			notCompared[p[1]]++
 		}
+		// A branch whose changes could not be read was compared with nothing,
+		// and its same-fork peers were not compared with it (cross-fork peers
+		// are already counted above).
+		for _, c := range cands {
+			if !c.bad {
+				continue
+			}
+			notCompared[c.u.Branch] = len(cands) - 1
+			for _, o := range cands {
+				if o.u.Branch != c.u.Branch && forkOf[o.u.Branch] != "" && forkOf[o.u.Branch] == forkOf[c.u.Branch] {
+					notCompared[o.u.Branch]++
+				}
+			}
+		}
 	}
 
 	collideCount := map[string]int{}
@@ -86,7 +109,9 @@ func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Conte
 		conf := -1
 		if probed {
 			conf = collideCount[c.u.Branch]
-			if conf == 0 && notCompared[c.u.Branch] > 0 {
+			if c.bad {
+				why = append(why, "git could not read what it changed")
+			} else if conf == 0 && notCompared[c.u.Branch] > 0 {
 				why = append(why, "collides with nothing it was compared with")
 			} else if conf == 0 {
 				why = append(why, "collides with nothing")
@@ -101,17 +126,24 @@ func buildPlan(r *git.Repo, units []Unit, forks []ForkPoint, contentions []Conte
 		if n := notCompared[c.u.Branch]; n > 0 {
 			why = append(why, "not compared with "+strconv.Itoa(n)+" other branch(es)")
 		}
-		why = append(why, strconv.Itoa(len(c.files))+" file(s) changed")
+		if !c.bad {
+			why = append(why, strconv.Itoa(len(c.files))+" file(s) changed")
+		}
 		if n := len(c.u.Worktrees); n > 0 {
 			why = append(why, "checked out in "+strconv.Itoa(n)+" worktree(s)")
 		}
 		items = append(items, PlanItem{
 			Branch: c.u.Branch, Ahead: c.u.Unlanded, BehindN: behind,
-			Conflicts: conf, NotCompared: notCompared[c.u.Branch], Why: why,
+			Conflicts: conf, NotCompared: notCompared[c.u.Branch], Unreadable: c.bad, Why: why,
 		})
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
+		// A branch nothing is known about is never recommended ahead of one that
+		// was actually compared.
+		if items[i].Unreadable != items[j].Unreadable {
+			return !items[i].Unreadable
+		}
 		ci, cj := items[i].Conflicts, items[j].Conflicts
 		if ci < 0 {
 			ci = 0

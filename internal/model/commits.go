@@ -47,6 +47,9 @@ type Graph struct {
 func parseLog(r *git.Repo, args ...string) []Commit {
 	format := strings.Join([]string{"%H", "%P", "%D", "%s", "%an", "%cI"}, "%x00")
 	full := append([]string{"log", "-z", "--no-color", "--date-order", "--format=" + format}, args...)
+	// "--" ends the revisions: a file in the working tree named like a ref must
+	// not make git refuse the whole log as ambiguous.
+	full = append(full, "--")
 	return parseLogRecords(r.Try(full...))
 }
 

@@ -77,6 +77,9 @@ func PlainReport(s *protocol.Snapshot) string {
 			if p.Conflicts >= 0 {
 				conf = fmt.Sprintf("%d conflicting branch(es)", p.Conflicts)
 			}
+			if p.Unreadable {
+				conf = "git could not read its changes - not compared"
+			}
 			if p.NotCompared > 0 {
 				conf += fmt.Sprintf(" · not compared with %d other branch(es)", p.NotCompared)
 			}
