@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -67,4 +68,26 @@ func TestRepoCountsTimedOutCalls(t *testing.T) {
 	if r.TimedOut() != 1 {
 		t.Fatalf("TimedOut() = %d, want 1: an empty Try() result after a timeout must be detectable", r.TimedOut())
 	}
+}
+
+// A killed call must not leave descendants holding its working directory: on
+// Windows only git.exe died, the alias's shell and sleep kept the directory open
+// and it could not be removed.
+func TestTimedOutCallLeavesNothingHoldingItsDirectory(t *testing.T) {
+	old := DefaultTimeout
+	DefaultTimeout = 300 * time.Millisecond
+	defer func() { DefaultTimeout = old }()
+
+	dir := t.TempDir()
+	if _, err := Run(dir, "-c", "alias.hang=!sleep 30", "hang"); err == nil {
+		t.Fatal("the call must time out")
+	}
+	var err error
+	for i := 0; i < 20; i++ { // allow the OS a moment to release handles after the kill
+		if err = os.Remove(dir); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("directory still in use after the timed-out call returned: %v", err)
 }

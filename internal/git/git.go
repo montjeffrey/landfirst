@@ -99,7 +99,13 @@ func RunCtx(ctx context.Context, dir string, extraEnv []string, args ...string) 
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	err := cmd.Run()
+	guard := newProcGuard(cmd)
+	defer guard.close()
+	err := cmd.Start()
+	if err == nil {
+		guard.attach(cmd)
+		err = cmd.Wait()
+	}
 	if err != nil {
 		code := -1
 		var ee *exec.ExitError
