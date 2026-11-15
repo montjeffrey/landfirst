@@ -713,12 +713,15 @@ func (a *App) wtRemove() {
 }
 
 func (a *App) runAction(action *protocol.Action) tea.Cmd {
+	// Captured now, on the Update goroutine: the closure runs later, and must send
+	// the revision the user confirmed against, not whatever a refresh has since stored.
+	rev := a.snap.Revision
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
 		res, err := a.eng.Execute(ctx, protocol.ExecuteRequest{
 			ActionID:     action.ID,
-			Revision:     a.snap.Revision,
+			Revision:     rev,
 			Confirmation: confirmationOf(action.Argv),
 		})
 		return opDoneMsg{label: "git " + strings.Join(action.Argv, " "), result: res, err: err}
@@ -726,6 +729,9 @@ func (a *App) runAction(action *protocol.Action) tea.Cmd {
 }
 
 func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
+	// Captured now, on the Update goroutine: the closure runs later, and must send
+	// the revision the user confirmed against, not whatever a refresh has since stored.
+	rev := a.snap.Revision
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
@@ -733,19 +739,22 @@ func (a *App) runWorktreeAdd(u *protocol.Unit) tea.Cmd {
 			Branch:    u.Branch,
 			NewBranch: false, // the branch already exists - give it its own worktree, don't create a new one
 			Track:     true,
-			Revision:  a.snap.Revision,
+			Revision:  rev,
 		})
 		return opDoneMsg{label: "worktree for " + u.Branch, result: res, err: err}
 	}
 }
 
 func (a *App) runWorktreeRemove(wt *protocol.Worktree) tea.Cmd {
+	// Captured now, on the Update goroutine: the closure runs later, and must send
+	// the revision the user confirmed against, not whatever a refresh has since stored.
+	rev := a.snap.Revision
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(a.watchCtx, opTimeout)
 		defer cancel()
 		res, err := a.eng.Worktrees().Remove(ctx, protocol.WorktreeRemoveRequest{
 			WorktreeID: wt.ID,
-			Revision:   a.snap.Revision,
+			Revision:   rev,
 		})
 		return opDoneMsg{label: "remove worktree at " + wt.Path, result: res, err: err}
 	}
