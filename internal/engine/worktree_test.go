@@ -255,7 +255,7 @@ func TestWorktreeRemoveCleanWorktreeRemovesIt(t *testing.T) {
 	if !result.Ran || result.ExitCode != 0 {
 		t.Fatalf("expected a successful removal, got %+v (stderr=%q)", result, result.Stderr)
 	}
-	wantArgv := []string{"worktree", "remove", filepath.ToSlash(wt)}
+	wantArgv := []string{"worktree", "remove", "--", filepath.ToSlash(wt)}
 	if !equalArgv(result.Argv, wantArgv) {
 		t.Fatalf("Argv = %v, want %v", result.Argv, wantArgv)
 	}

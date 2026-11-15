@@ -168,6 +168,9 @@ type PlanItem struct {
 	// compared with (a different fork point, or past the -max-pairs cap), so
 	// Conflicts counts only the compared ones.
 	NotCompared int `json:"notCompared,omitempty"`
+	// Unreadable: git could not say which files this branch changed, so it was
+	// compared with nothing.
+	Unreadable bool `json:"unreadable,omitempty"`
 }
 
 // Freshness is how stale this repo's view of the remote is. FetchHeadAt alone

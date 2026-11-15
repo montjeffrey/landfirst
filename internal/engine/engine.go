@@ -286,7 +286,7 @@ func toSnapshot(m *model.Model, stage protocol.Stage) *protocol.Snapshot {
 	}
 	plan := make([]protocol.PlanItem, len(m.Plan))
 	for i, p := range m.Plan {
-		plan[i] = protocol.PlanItem{Order: p.Order, Branch: p.Branch, Ahead: p.Ahead, Behind: p.BehindN, Conflicts: p.Conflicts, NotCompared: p.NotCompared, Why: p.Why}
+		plan[i] = protocol.PlanItem{Order: p.Order, Branch: p.Branch, Ahead: p.Ahead, Behind: p.BehindN, Conflicts: p.Conflicts, NotCompared: p.NotCompared, Unreadable: p.Unreadable, Why: p.Why}
 	}
 
 	s := &protocol.Snapshot{

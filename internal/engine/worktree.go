@@ -235,7 +235,7 @@ func (w *worktreeService) Remove(ctx context.Context, req protocol.WorktreeRemov
 				Note:     note,
 			}, nil
 		}
-		return w.runAndSnapshot(ctx, []string{"worktree", "remove", wt.Path})
+		return w.runAndSnapshot(ctx, []string{"worktree", "remove", "--", wt.Path})
 	default:
 		// Dirty, or an operation in progress: never silently discard work.
 		// Show the command that would be needed and let the operator run it
